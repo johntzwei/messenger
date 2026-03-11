@@ -86,6 +86,7 @@ function App() {
             roomId={currentRoom}
             userId={user.uid}
             userName={user.displayName || "Anonymous"}
+            userEmail={user.email || ""}
             db={db}
           />
         </div>
@@ -120,7 +121,7 @@ function App() {
           Sign out
         </button>
       </div>
-      <Home onSelectRoom={setCurrentRoom} />
+      <Home onSelectRoom={setCurrentRoom} userEmail={user.email || ""} />
     </div>
   );
 }
