@@ -4,6 +4,7 @@ import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { auth, db, googleProvider } from "./firebase";
 import { useAllowlist } from "./useAllowlist";
+import { useNotifications } from "./useNotifications";
 import Home from "./Home";
 import rooms from "./rooms";
 import "./index.css";
@@ -13,6 +14,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const { emails: allowedEmails, loading: allowlistLoading } = useAllowlist(db);
+  const { permission, supported, requestPermission } = useNotifications(db, user?.uid ?? null);
 
   useEffect(() => onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); }), []);
 
@@ -58,6 +60,11 @@ function App() {
     <div className="page">
       <div className="header">
         <span className="header-title">Johnny's Messenger</span>
+        {supported && permission !== "granted" && (
+          <button className="header-notify" onClick={requestPermission} title="Enable notifications">
+            Notifications
+          </button>
+        )}
         <button className="header-signout" onClick={() => signOut(auth)}>Sign out</button>
       </div>
       <Home onSelectRoom={setCurrentRoom} />

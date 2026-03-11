@@ -72,8 +72,21 @@ body {
   white-space: nowrap;
   max-width: 120px;
 }
-.header-signout {
+.header-notify {
   margin-left: auto;
+  background: none;
+  border: 1px solid #2a6;
+  color: #2a6;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.header-notify:active { background: rgba(34, 170, 102, 0.15); }
+.header-signout {
+  margin-left: 8px;
   background: none;
   border: 1px solid #444;
   color: #888;
