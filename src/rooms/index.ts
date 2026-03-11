@@ -3,7 +3,6 @@ import type { Firestore } from "firebase/firestore";
 import GeneralChat from "./GeneralChat";
 import AdminConsole from "./AdminConsole";
 
-// Room component props — every room file gets these
 export interface RoomProps {
   roomId: string;
   userId: string;
@@ -12,11 +11,9 @@ export interface RoomProps {
   db: Firestore;
 }
 
-// Registry: map room IDs to their components
-// To add a new room: import your file and add a line here
-const rooms: Record<string, { name: string; component: ComponentType<RoomProps>; adminOnly?: boolean }> = {
+const rooms: Record<string, { name: string; component: ComponentType<RoomProps> }> = {
   general: { name: "General", component: GeneralChat },
-  admin: { name: "Admin Console", component: AdminConsole, adminOnly: true },
+  admin: { name: "Admin Console", component: AdminConsole },
 };
 
 export default rooms;

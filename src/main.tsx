@@ -14,121 +14,55 @@ function App() {
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const { emails: allowedEmails, loading: allowlistLoading } = useAllowlist(db);
 
-  // Listen for auth changes
-  useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
-  }, []);
+  useEffect(() => onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); }), []);
 
   if (loading || allowlistLoading) return <div className="center">Loading...</div>;
 
-  // Signed in but not on the allowlist — kick them out
-  if (user && allowedEmails.length > 0 && !allowedEmails.includes(user.email || "")) {
+  if (!user) {
     return (
       <div className="center">
         <h1>Johnny's Messenger</h1>
-        <p style={{ color: "#f66", marginBottom: "24px" }}>You're not on the list, sorry!</p>
+        <p className="subtitle">secure hackable chat</p>
+        <button className="btn" onClick={() => signInWithPopup(auth, googleProvider)}>Sign in with Google</button>
+      </div>
+    );
+  }
+
+  if (allowedEmails.length > 0 && !allowedEmails.includes(user.email || "")) {
+    return (
+      <div className="center">
+        <h1>Johnny's Messenger</h1>
+        <p className="error-text">You're not on the list, sorry!</p>
         <button className="btn" onClick={() => signOut(auth)}>Sign out</button>
       </div>
     );
   }
 
-  // Not signed in — show login
-  if (!user) {
-    return (
-      <div className="center">
-        <h1>Johnny's Messenger</h1>
-        <p style={{ color: "#888", marginBottom: "24px" }}>secure hackable chat</p>
-        <button className="btn" onClick={() => signInWithPopup(auth, googleProvider)}>
-          Sign in with Google
-        </button>
-      </div>
-    );
-  }
-
-  // Signed in, in a room — render that room's component
   if (currentRoom && rooms[currentRoom]) {
-    const RoomComponent = rooms[currentRoom].component;
+    const Room = rooms[currentRoom].component;
     return (
-      <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "12px 16px",
-            borderBottom: "1px solid #333",
-          }}
-        >
-          <button
-            onClick={() => setCurrentRoom(null)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#2a6",
-              cursor: "pointer",
-              fontSize: "16px",
-              marginRight: "12px",
-            }}
-          >
-            &larr; Back
-          </button>
+      <div className="page">
+        <div className="header">
+          <button className="header-back" onClick={() => setCurrentRoom(null)}>&larr; Back</button>
           <span style={{ fontWeight: "bold" }}>{rooms[currentRoom].name}</span>
-          <span style={{ marginLeft: "auto", fontSize: "12px", color: "#888" }}>
-            {user.displayName}
-          </span>
+          <span className="header-user">{user.displayName}</span>
         </div>
-
-        {/* Room content */}
         <div style={{ flex: 1, overflow: "hidden" }}>
-          <RoomComponent
-            roomId={currentRoom}
-            userId={user.uid}
-            userName={user.displayName || "Anonymous"}
-            userEmail={user.email || ""}
-            db={db}
-          />
+          <Room roomId={currentRoom} userId={user.uid} userName={user.displayName || "Anonymous"} userEmail={user.email || ""} db={db} />
         </div>
       </div>
     );
   }
 
-  // Signed in, no room selected — show room list
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          padding: "12px 16px",
-          borderBottom: "1px solid #333",
-        }}
-      >
-        <span style={{ fontWeight: "bold", fontSize: "18px" }}>Johnny's Messenger</span>
-        <button
-          onClick={() => signOut(auth)}
-          style={{
-            marginLeft: "auto",
-            background: "none",
-            border: "1px solid #444",
-            color: "#888",
-            padding: "6px 12px",
-            borderRadius: "6px",
-            cursor: "pointer",
-          }}
-        >
-          Sign out
-        </button>
+    <div className="page">
+      <div className="header">
+        <span className="header-title">Johnny's Messenger</span>
+        <button className="header-signout" onClick={() => signOut(auth)}>Sign out</button>
       </div>
       <Home onSelectRoom={setCurrentRoom} />
     </div>
   );
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
