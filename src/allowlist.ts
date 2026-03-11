@@ -4,4 +4,5 @@
 export const ALLOWED_EMAILS = [
   "jtwei@usc.edu",
   "sojhal@gmail.com",
+  "johntzwei@gmail.com",
 ];
