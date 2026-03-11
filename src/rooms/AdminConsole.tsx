@@ -53,7 +53,8 @@ export default function AdminConsole({ userEmail, db }: RoomProps) {
     const cmd: LogEntry = { id: crypto.randomUUID(), type: "cmd", text: text.trim() };
     setText("");
     try {
-      setLog((prev) => [...prev, cmd, ...(await run(text))]);
+      const results = await run(text);
+      setLog((prev) => [...prev, cmd, ...results]);
     } catch (err: any) {
       setLog((prev) => [...prev, cmd, msg(err.message, "err")]);
     }
