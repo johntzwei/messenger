@@ -48,10 +48,6 @@ exports.sendNewMessageNotification = onDocumentCreated(
     const message = event.data?.data();
     if (!message) return;
 
-    // serverTimestamp() causes two writes: first with null timestamp, then resolved.
-    // Only send notification on the resolved write.
-    if (!message.timestamp) return;
-
     const { senderName, text, senderId } = message;
     const db = getFirestore();
 

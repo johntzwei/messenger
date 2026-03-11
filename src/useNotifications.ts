@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getToken, onMessage } from "firebase/messaging";
+import { getToken } from "firebase/messaging";
 import { doc, setDoc, deleteDoc, Firestore } from "firebase/firestore";
 import { messagingPromise } from "./firebase";
 
@@ -13,22 +13,11 @@ export function useNotifications(db: Firestore, userId: string | null) {
   );
   const [supported, setSupported] = useState(typeof Notification !== "undefined");
 
-  // Listen for foreground messages and show a notification
+  // Check if messaging is supported
   useEffect(() => {
-    let unsub: (() => void) | undefined;
     messagingPromise.then((messaging) => {
-      if (!messaging) {
-        setSupported(false);
-        return;
-      }
-      unsub = onMessage(messaging, (payload) => {
-        const { title, body } = payload.notification || {};
-        if (title && document.visibilityState !== "visible") {
-          new Notification(title, { body: body || "" });
-        }
-      });
+      if (!messaging) setSupported(false);
     });
-    return () => unsub?.();
   }, []);
 
   const requestPermission = async () => {
