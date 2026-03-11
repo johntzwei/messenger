@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { auth, db, googleProvider } from "./firebase";
-import { ALLOWED_EMAILS } from "./allowlist";
+import { useAllowlist } from "./useAllowlist";
 import Home from "./Home";
 import rooms from "./rooms";
 import "./index.css";
@@ -12,6 +12,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
+  const { emails: allowedEmails, loading: allowlistLoading } = useAllowlist(db);
 
   // Listen for auth changes
   useEffect(() => {
@@ -21,10 +22,10 @@ function App() {
     });
   }, []);
 
-  if (loading) return <div className="center">Loading...</div>;
+  if (loading || allowlistLoading) return <div className="center">Loading...</div>;
 
   // Signed in but not on the allowlist — kick them out
-  if (user && ALLOWED_EMAILS.length > 0 && !ALLOWED_EMAILS.includes(user.email || "")) {
+  if (user && allowedEmails.length > 0 && !allowedEmails.includes(user.email || "")) {
     return (
       <div className="center">
         <h1>Johnny's Messenger</h1>

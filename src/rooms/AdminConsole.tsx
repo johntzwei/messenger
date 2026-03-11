@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Firestore } from "firebase/firestore";
-import { useMessages } from "../useMessages";
-import { ALLOWED_EMAILS } from "../allowlist";
+import { useAllowlist } from "../useAllowlist";
 
 const ADMIN_EMAIL = "johntzwei@gmail.com";
 
@@ -19,114 +18,15 @@ interface LogEntry {
   type: "command" | "response" | "error";
 }
 
-function processCommand(input: string): LogEntry[] {
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("@")) {
-    return [{ id: crypto.randomUUID(), text: "Commands must start with @. Try @help", type: "error" }];
-  }
-
-  const [cmd, ...args] = trimmed.slice(1).split(/\s+/);
-
-  switch (cmd.toLowerCase()) {
-    case "help":
-      return [
-        {
-          id: crypto.randomUUID(),
-          type: "response",
-          text: [
-            "Available commands:",
-            "",
-            "  @list              — Show all allowed users",
-            "  @add <email>       — Add a user to the allowlist",
-            "  @remove <email>    — Remove a user from the allowlist",
-            "  @rules             — Show Firestore security rules to paste in Firebase Console",
-            "  @help              — Show this help message",
-          ].join("\n"),
-        },
-      ];
-
-    case "list":
-      return [
-        {
-          id: crypto.randomUUID(),
-          type: "response",
-          text: ALLOWED_EMAILS.length
-            ? "Allowed users:\n\n" + ALLOWED_EMAILS.map((e, i) => `  ${i + 1}. ${e}`).join("\n")
-            : "Allowlist is empty (all users permitted).",
-        },
-      ];
-
-    case "add": {
-      const email = args[0]?.toLowerCase();
-      if (!email || !email.includes("@")) {
-        return [{ id: crypto.randomUUID(), type: "error", text: "Usage: @add <email>" }];
-      }
-      if (ALLOWED_EMAILS.includes(email)) {
-        return [{ id: crypto.randomUUID(), type: "response", text: `${email} is already on the list.` }];
-      }
-      ALLOWED_EMAILS.push(email);
-      return [
-        {
-          id: crypto.randomUUID(),
-          type: "response",
-          text: `Added ${email}.\n\nNote: This change is temporary (in-memory only). To make it permanent, edit src/allowlist.ts and update your Firestore rules. Run @rules to see the updated rules.`,
-        },
-      ];
-    }
-
-    case "remove": {
-      const email = args[0]?.toLowerCase();
-      if (!email) {
-        return [{ id: crypto.randomUUID(), type: "error", text: "Usage: @remove <email>" }];
-      }
-      const idx = ALLOWED_EMAILS.indexOf(email);
-      if (idx === -1) {
-        return [{ id: crypto.randomUUID(), type: "response", text: `${email} is not on the list.` }];
-      }
-      if (email === ADMIN_EMAIL) {
-        return [{ id: crypto.randomUUID(), type: "error", text: "Cannot remove the admin account." }];
-      }
-      ALLOWED_EMAILS.splice(idx, 1);
-      return [
-        {
-          id: crypto.randomUUID(),
-          type: "response",
-          text: `Removed ${email}.\n\nNote: This change is temporary (in-memory only). To make it permanent, edit src/allowlist.ts and update your Firestore rules. Run @rules to see the updated rules.`,
-        },
-      ];
-    }
-
-    case "rules": {
-      const emailList = ALLOWED_EMAILS.map((e) => `        "${e}"`).join(",\n");
-      const rules = `rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null
-        && request.auth.token.email in [
-${emailList}
-        ];
-    }
-  }
-}`;
-      return [
-        {
-          id: crypto.randomUUID(),
-          type: "response",
-          text: "Paste these rules in Firebase Console → Firestore → Rules:\n\n" + rules,
-        },
-      ];
-    }
-
-    default:
-      return [{ id: crypto.randomUUID(), type: "error", text: `Unknown command: @${cmd}. Try @help` }];
-  }
+function reply(text: string, type: "response" | "error" = "response"): LogEntry {
+  return { id: crypto.randomUUID(), text, type };
 }
 
-export default function AdminConsole({ userEmail }: Props) {
+export default function AdminConsole({ userEmail, db }: Props) {
+  const { emails, add, remove } = useAllowlist(db);
   const [text, setText] = useState("");
   const [log, setLog] = useState<LogEntry[]>([
-    { id: "welcome", type: "response", text: "Admin Console. Type @help for available commands." },
+    reply("Admin Console. Type @help for available commands."),
   ]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -142,12 +42,80 @@ export default function AdminConsole({ userEmail }: Props) {
     );
   }
 
-  const handleSend = () => {
+  const processCommand = async (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed.startsWith("@")) {
+      return [reply("Commands must start with @. Try @help", "error")];
+    }
+
+    const [cmd, ...args] = trimmed.slice(1).split(/\s+/);
+
+    switch (cmd.toLowerCase()) {
+      case "help":
+        return [
+          reply(
+            [
+              "Available commands:",
+              "",
+              "  @list              — Show all allowed users",
+              "  @add <email>       — Add a user to the allowlist",
+              "  @remove <email>    — Remove a user from the allowlist",
+              "  @help              — Show this help message",
+            ].join("\n"),
+          ),
+        ];
+
+      case "list":
+        return [
+          reply(
+            emails.length
+              ? "Allowed users:\n\n" + emails.map((e, i) => `  ${i + 1}. ${e}`).join("\n")
+              : "Allowlist is empty (all users permitted).",
+          ),
+        ];
+
+      case "add": {
+        const email = args[0]?.toLowerCase();
+        if (!email || !email.includes("@")) {
+          return [reply("Usage: @add <email>", "error")];
+        }
+        if (emails.includes(email)) {
+          return [reply(`${email} is already on the list.`)];
+        }
+        await add(email);
+        return [reply(`Added ${email}.`)];
+      }
+
+      case "remove": {
+        const email = args[0]?.toLowerCase();
+        if (!email) {
+          return [reply("Usage: @remove <email>", "error")];
+        }
+        if (!emails.includes(email)) {
+          return [reply(`${email} is not on the list.`)];
+        }
+        if (email === ADMIN_EMAIL) {
+          return [reply("Cannot remove the admin account.", "error")];
+        }
+        await remove(email);
+        return [reply(`Removed ${email}.`)];
+      }
+
+      default:
+        return [reply(`Unknown command: @${cmd}. Try @help`, "error")];
+    }
+  };
+
+  const handleSend = async () => {
     if (!text.trim()) return;
     const command: LogEntry = { id: crypto.randomUUID(), type: "command", text: text.trim() };
-    const results = processCommand(text);
-    setLog((prev) => [...prev, command, ...results]);
     setText("");
+    try {
+      const results = await processCommand(text);
+      setLog((prev) => [...prev, command, ...results]);
+    } catch (err: any) {
+      setLog((prev) => [...prev, command, reply(`Error: ${err.message}`, "error")]);
+    }
   };
 
   return (
