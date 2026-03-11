@@ -15,10 +15,17 @@ export function useAllowlist(db: Firestore) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "allowedUsers"), (snap) => {
-      setEmails(snap.docs.map((d) => d.id));
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      collection(db, "allowedUsers"),
+      (snap) => {
+        setEmails(snap.docs.map((d) => d.id));
+        setLoading(false);
+      },
+      () => {
+        // If Firestore denies access, stop loading (empty allowlist = allow all)
+        setLoading(false);
+      },
+    );
     return unsub;
   }, [db]);
 
