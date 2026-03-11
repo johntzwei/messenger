@@ -121,7 +121,7 @@ function App() {
           Sign out
         </button>
       </div>
-      <Home onSelectRoom={setCurrentRoom} userEmail={user.email || ""} />
+      <Home onSelectRoom={setCurrentRoom} />
     </div>
   );
 }
