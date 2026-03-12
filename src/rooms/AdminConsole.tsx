@@ -3,6 +3,7 @@ import { useAllowlist } from "../useAllowlist";
 import type { RoomProps } from "./index";
 
 const ADMIN_EMAIL = "johntzwei@gmail.com";
+const MAX_LOG = 200;
 
 interface LogEntry {
   id: string;
@@ -13,6 +14,9 @@ interface LogEntry {
 const msg = (text: string, type: "ok" | "err" = "ok"): LogEntry => ({
   id: crypto.randomUUID(), text, type,
 });
+
+const appendLog = (prev: LogEntry[], ...entries: LogEntry[]) =>
+  [...prev, ...entries].slice(-MAX_LOG);
 
 export default function AdminConsole({ userEmail, db }: RoomProps) {
   const { emails, add, remove } = useAllowlist(db);
@@ -54,9 +58,9 @@ export default function AdminConsole({ userEmail, db }: RoomProps) {
     setText("");
     try {
       const results = await run(text);
-      setLog((prev) => [...prev, cmd, ...results]);
+      setLog((prev) => appendLog(prev, cmd, ...results));
     } catch (err: any) {
-      setLog((prev) => [...prev, cmd, msg(err.message, "err")]);
+      setLog((prev) => appendLog(prev, cmd, msg(err.message, "err")));
     }
   };
 

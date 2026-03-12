@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useCallback } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { vim, getCM, CodeMirror as CM5 } from "@replit/codemirror-vim";
 import { keymap, EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { useMessages } from "../useMessages";
+import MessageList from "./MessageList";
 import type { RoomProps } from "./index";
 
 const darkTheme = EditorView.theme(
@@ -33,25 +34,21 @@ const darkTheme = EditorView.theme(
 );
 
 export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
-  const { messages, send, error } = useMessages(db, roomId);
+  const { messages, send, error } = useMessages(db, roomId, userId, userName);
   const [vimMode, setVimMode] = useState("NORMAL");
-  const bottomRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const sendRef = useRef(send);
+  sendRef.current = send;
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const view = editorViewRef.current;
     if (!view) return;
     const text = view.state.doc.toString();
     if (!text.trim()) return;
-    send(text, userId, userName);
+    sendRef.current(text);
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: "" },
     });
-    // Reset to normal mode
     const cm = getCM(view);
     if (cm?.state?.vim) {
       cm.state.vim.insertMode = false;
@@ -60,7 +57,7 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
     }
     setVimMode("NORMAL");
     view.focus();
-  };
+  }, []);
 
   const sendKeymap = useMemo(
     () =>
@@ -75,9 +72,7 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
           },
         ])
       ),
-    // handleSend captures refs so this is stable
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [handleSend]
   );
 
   const extensions = useMemo(
@@ -85,7 +80,7 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
     [sendKeymap]
   );
 
-  const onCreateEditor = (view: EditorView) => {
+  const onCreateEditor = useCallback((view: EditorView) => {
     editorViewRef.current = view;
     const cm = getCM(view);
     if (cm) {
@@ -93,7 +88,7 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
         setVimMode(e.mode.toUpperCase());
       });
     }
-  };
+  }, []);
 
   const modeClass =
     vimMode === "INSERT"
@@ -104,23 +99,7 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
 
   return (
     <div className="chat">
-      <div className="chat-messages">
-        {error && <div className="error-text" style={{ padding: "12px" }}>Error: {error}</div>}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`chat-row${m.senderId === userId ? " mine" : ""}`}
-          >
-            <div className="chat-sender">{m.senderName}</div>
-            <div
-              className={`chat-bubble${m.senderId === userId ? " mine" : ""}`}
-            >
-              {m.text}
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
+      <MessageList messages={messages} error={error} userId={userId} />
       <div className="chat-input-row vim-input-row">
         <span className={`vim-mode-badge ${modeClass}`}>{vimMode}</span>
         <div className="vim-editor-wrapper">

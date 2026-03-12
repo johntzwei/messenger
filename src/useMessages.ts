@@ -19,9 +19,8 @@ export interface Message {
 }
 
 // Listen to the last 50 messages in a room
-export function useMessages(db: Firestore, roomId: string) {
+export function useMessages(db: Firestore, roomId: string, userId: string, userName: string) {
   const [messages, setMessages] = useState<Message[]>([]);
-
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,7 +32,7 @@ export function useMessages(db: Firestore, roomId: string) {
 
     const unsub = onSnapshot(q, (snap) => {
       setMessages(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Message)).reverse());
-      setError(null);
+      if (error !== null) setError(null);
     }, (err) => {
       console.error("Messages listener error:", err);
       setError(err.message);
@@ -42,8 +41,7 @@ export function useMessages(db: Firestore, roomId: string) {
     return unsub;
   }, [db, roomId]);
 
-  // Send a message
-  const send = async (text: string, userId: string, userName: string) => {
+  const send = async (text: string) => {
     if (!text.trim()) return;
     try {
       await addDoc(collection(db, "rooms", roomId, "messages"), {
