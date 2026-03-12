@@ -22,15 +22,21 @@ export interface Message {
 export function useMessages(db: Firestore, roomId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     const q = query(
       collection(db, "rooms", roomId, "messages"),
-      orderBy("timestamp", "asc"),
+      orderBy("timestamp", "desc"),
       limit(50)
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Message)));
+      setMessages(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Message)).reverse());
+      setError(null);
+    }, (err) => {
+      console.error("Messages listener error:", err);
+      setError(err.message);
     });
 
     return unsub;
@@ -39,13 +45,18 @@ export function useMessages(db: Firestore, roomId: string) {
   // Send a message
   const send = async (text: string, userId: string, userName: string) => {
     if (!text.trim()) return;
-    await addDoc(collection(db, "rooms", roomId, "messages"), {
-      text: text.trim(),
-      senderId: userId,
-      senderName: userName,
-      timestamp: serverTimestamp(),
-    });
+    try {
+      await addDoc(collection(db, "rooms", roomId, "messages"), {
+        text: text.trim(),
+        senderId: userId,
+        senderName: userName,
+        timestamp: serverTimestamp(),
+      });
+    } catch (err: any) {
+      console.error("Send error:", err);
+      setError(err.message);
+    }
   };
 
-  return { messages, send };
+  return { messages, send, error };
 }

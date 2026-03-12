@@ -33,7 +33,7 @@ const darkTheme = EditorView.theme(
 );
 
 export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
-  const { messages, send } = useMessages(db, roomId);
+  const { messages, send, error } = useMessages(db, roomId);
   const [vimMode, setVimMode] = useState("NORMAL");
   const bottomRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -105,6 +105,7 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
   return (
     <div className="chat">
       <div className="chat-messages">
+        {error && <div className="error-text" style={{ padding: "12px" }}>Error: {error}</div>}
         {messages.map((m) => (
           <div
             key={m.id}

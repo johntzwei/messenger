@@ -3,7 +3,7 @@ import { useMessages } from "../useMessages";
 import type { RoomProps } from "./index";
 
 export default function GeneralChat({ roomId, userId, userName, db }: RoomProps) {
-  const { messages, send } = useMessages(db, roomId);
+  const { messages, send, error } = useMessages(db, roomId);
   const [text, setText] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -14,6 +14,7 @@ export default function GeneralChat({ roomId, userId, userName, db }: RoomProps)
   return (
     <div className="chat">
       <div className="chat-messages">
+        {error && <div className="error-text" style={{ padding: "12px" }}>Error: {error}</div>}
         {messages.map((m) => (
           <div key={m.id} className={`chat-row${m.senderId === userId ? " mine" : ""}`}>
             <div className="chat-sender">{m.senderName}</div>

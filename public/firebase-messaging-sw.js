@@ -11,16 +11,6 @@ firebase.initializeApp({
   appId: "1:115388448794:web:ac9180f8513034201c51a3",
 });
 
-const messaging = firebase.messaging();
-
-// Handle background messages (when app is not in foreground)
-messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification || {};
-  if (title) {
-    self.registration.showNotification(title, {
-      body: body || "",
-      icon: "/messenger/icon-192.png",
-      data: payload.data,
-    });
-  }
-});
+// Firebase SDK automatically shows notifications for messages with a
+// "notification" payload — no onBackgroundMessage handler needed.
+firebase.messaging();
