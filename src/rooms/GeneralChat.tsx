@@ -91,7 +91,7 @@ export default function GeneralChat({ roomId, userId, userName, db }: RoomProps)
         <button className="scroll-to-bottom" onClick={scrollToBottom} aria-label="Scroll to bottom">↓</button>
       )}
       <div className="chat-input-row">
-        <input className="chat-input" type="text" autoComplete="off" name="message" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="Type a message..." />
+        <input className="chat-input" type="text" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} name="message" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="Type a message..." />
         <button className="chat-send" onClick={handleSend}>Send</button>
       </div>
     </div>

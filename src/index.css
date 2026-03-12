@@ -237,7 +237,21 @@ body {
 .console-bubble.error { background: #633; color: #faa; }
 .console-bubble.cmd { background: #2a6; font-family: inherit; font-size: inherit; }
 
-/* Vim chat */
+/* Vim chat - terminal theme */
+.vim-chat .chat-messages { background: #000; }
+.vim-chat .chat-bubble { background: #111; color: #0f0; font-family: monospace; }
+.vim-chat .chat-bubble.mine { background: #0a2a0a; color: #0f0; }
+.vim-chat .chat-sender { color: #0a0; }
+
+.vim-disabled-notice {
+  padding: 16px;
+  text-align: center;
+  color: #0a0;
+  font-family: monospace;
+  font-size: 14px;
+  border-top: 1px solid #333;
+}
+
 .vim-input-row { align-items: center; }
 .vim-mode-badge {
   font-family: monospace;

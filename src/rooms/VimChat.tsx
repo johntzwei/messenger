@@ -97,24 +97,30 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
         ? "visual"
         : "";
 
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
   return (
-    <div className="chat">
+    <div className="chat vim-chat">
       <MessageList messages={messages} error={error} userId={userId} />
-      <div className="chat-input-row vim-input-row">
-        <span className={`vim-mode-badge ${modeClass}`}>{vimMode}</span>
-        <div className="vim-editor-wrapper">
-          <CodeMirror
-            value=""
-            extensions={extensions}
-            onCreateEditor={onCreateEditor}
-            basicSetup={false}
-            placeholder="Press i to type..."
-          />
+      {isMobile ? (
+        <div className="vim-disabled-notice">Vim mode is desktop only</div>
+      ) : (
+        <div className="chat-input-row vim-input-row">
+          <span className={`vim-mode-badge ${modeClass}`}>{vimMode}</span>
+          <div className="vim-editor-wrapper">
+            <CodeMirror
+              value=""
+              extensions={extensions}
+              onCreateEditor={onCreateEditor}
+              basicSetup={false}
+              placeholder="Press i to type..."
+            />
+          </div>
+          <button className="chat-send" onClick={handleSend}>
+            Send
+          </button>
         </div>
-        <button className="chat-send" onClick={handleSend}>
-          Send
-        </button>
-      </div>
+      )}
     </div>
   );
 }
