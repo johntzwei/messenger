@@ -4,7 +4,7 @@ import { useSwipeGesture } from "../useSwipeGesture";
 import type { RoomProps } from "./index";
 
 export default function GeneralChat({ roomId, userId, userName, db }: RoomProps) {
-  const { messages, send, error } = useMessages(db, roomId);
+  const { messages, send, error } = useMessages(db, roomId, userId, userName);
   const [text, setText] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -40,11 +40,10 @@ export default function GeneralChat({ roomId, userId, userName, db }: RoomProps)
 
   const scrollToBottom = () => bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 
-  // Haptic feedback + send
   const handleSend = () => {
     if (!text.trim()) return;
     if (navigator.vibrate) navigator.vibrate(10);
-    send(text, userId, userName);
+    send(text);
     setText("");
   };
 
