@@ -1,13 +1,34 @@
-import { StrictMode, useState, useEffect } from "react";
+import { StrictMode, useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { auth, db, googleProvider } from "./firebase";
 import { useAllowlist } from "./useAllowlist";
 import { useNotifications } from "./useNotifications";
+import { useSwipeBack } from "./useSwipeBack";
+import { usePullToRefresh } from "./usePullToRefresh";
 import Home from "./Home";
 import rooms from "./rooms";
+import type { RoomProps } from "./rooms";
 import "./index.css";
+
+function RoomView({ onBack, ...roomProps }: { onBack: () => void } & RoomProps) {
+  const pageRef = useRef<HTMLDivElement>(null);
+  useSwipeBack(pageRef, onBack);
+  const Room = rooms[roomProps.roomId].component;
+  return (
+    <div className="page" ref={pageRef}>
+      <div className="header">
+        <button className="header-back" onClick={onBack}>&larr; Back</button>
+        <span style={{ fontWeight: "bold" }}>{rooms[roomProps.roomId].name}</span>
+        <span className="header-user">{roomProps.userName}</span>
+      </div>
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <Room {...roomProps} />
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -15,6 +36,11 @@ function App() {
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const { emails: allowedEmails, loading: allowlistLoading } = useAllowlist(db);
   const { permission, supported, requestPermission } = useNotifications(db, user?.uid ?? null);
+
+  const homeListRef = useRef<HTMLDivElement>(null);
+
+  const goBack = useCallback(() => setCurrentRoom(null), []);
+  usePullToRefresh(homeListRef);
 
   useEffect(() => onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); }), []);
 
@@ -41,18 +67,15 @@ function App() {
   }
 
   if (currentRoom && rooms[currentRoom]) {
-    const Room = rooms[currentRoom].component;
     return (
-      <div className="page">
-        <div className="header">
-          <button className="header-back" onClick={() => setCurrentRoom(null)}>&larr; Back</button>
-          <span style={{ fontWeight: "bold" }}>{rooms[currentRoom].name}</span>
-          <span className="header-user">{user.displayName}</span>
-        </div>
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          <Room roomId={currentRoom} userId={user.uid} userName={user.displayName || "Anonymous"} userEmail={user.email || ""} db={db} />
-        </div>
-      </div>
+      <RoomView
+        roomId={currentRoom}
+        onBack={goBack}
+        userId={user.uid}
+        userName={user.displayName || "Anonymous"}
+        userEmail={user.email || ""}
+        db={db}
+      />
     );
   }
 
@@ -67,7 +90,7 @@ function App() {
         )}
         <button className="header-signout" onClick={() => signOut(auth)}>Sign out</button>
       </div>
-      <Home onSelectRoom={setCurrentRoom} />
+      <Home ref={homeListRef} onSelectRoom={setCurrentRoom} />
     </div>
   );
 }

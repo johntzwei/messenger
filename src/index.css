@@ -1,15 +1,18 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html, body, #root {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #111;
   color: #fff;
-  min-height: 100vh;
-  min-height: 100dvh;
   -webkit-text-size-adjust: 100%;
 }
-
-#root { min-height: 100vh; min-height: 100dvh; }
 
 .center {
   display: flex;
@@ -41,6 +44,12 @@ body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 .header {
   display: flex;
@@ -120,7 +129,7 @@ body {
 .room-btn:active { background: #252525; }
 
 /* Chat */
-.chat { display: flex; flex-direction: column; height: 100%; }
+.chat { display: flex; flex-direction: column; height: 100%; position: relative; }
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -170,6 +179,47 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .chat-send:active { background: #295; }
+
+/* Scroll-to-bottom button */
+.scroll-to-bottom {
+  position: absolute;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(42, 42, 42, 0.9);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  z-index: 10;
+}
+.scroll-to-bottom:active { background: rgba(60, 60, 60, 0.9); }
+
+/* Long-press copy feedback */
+.chat-bubble.copied { background: #3b7 !important; transition: background 0.15s; }
+.copied-toast {
+  display: block;
+  font-size: 11px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+/* Pull-to-refresh indicator */
+[data-pull-refresh]::before {
+  display: block;
+  text-align: center;
+  padding: 12px;
+  font-size: 13px;
+}
+[data-pull-refresh="ready"]::before  { content: "Release to refresh"; color: #888; }
+[data-pull-refresh="pulling"]::before { content: "Pull to refresh..."; color: #555; }
 
 /* Admin console */
 .console-bubble {
