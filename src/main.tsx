@@ -12,7 +12,7 @@ import rooms from "./rooms";
 import type { RoomProps } from "./rooms";
 import "./index.css";
 
-function RoomView({ onBack, displayName, ...roomProps }: { onBack: () => void; displayName: string } & RoomProps) {
+function RoomView({ onBack, ...roomProps }: { onBack: () => void } & RoomProps) {
   const pageRef = useRef<HTMLDivElement>(null);
   useSwipeGesture(pageRef, "right", 80, onBack);
   const Room = rooms[roomProps.roomId].component;
@@ -21,7 +21,7 @@ function RoomView({ onBack, displayName, ...roomProps }: { onBack: () => void; d
       <div className="header">
         <button className="header-back" onClick={onBack}>&larr; Back</button>
         <span style={{ fontWeight: "bold" }}>{rooms[roomProps.roomId].name}</span>
-        <span className="header-user">{displayName}</span>
+        <span className="header-user">{roomProps.userName}</span>
       </div>
       <div style={{ flex: 1, overflow: "hidden" }}>
         <Room {...roomProps} />
@@ -71,7 +71,6 @@ function App() {
       <RoomView
         roomId={currentRoom}
         onBack={goBack}
-        displayName={user.displayName || "Anonymous"}
         userId={user.uid}
         userName={user.displayName || "Anonymous"}
         userEmail={user.email || ""}
@@ -91,9 +90,7 @@ function App() {
         )}
         <button className="header-signout" onClick={() => signOut(auth)}>Sign out</button>
       </div>
-      <div ref={homeListRef} style={{ flex: 1, overflow: "auto" }}>
-        <Home onSelectRoom={setCurrentRoom} />
-      </div>
+      <Home ref={homeListRef} onSelectRoom={setCurrentRoom} />
     </div>
   );
 }

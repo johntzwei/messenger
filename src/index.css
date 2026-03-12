@@ -203,22 +203,14 @@ body {
 }
 
 /* Pull-to-refresh indicator */
-[data-pull-refresh="ready"]::before {
-  content: "Release to refresh";
+[data-pull-refresh]::before {
   display: block;
   text-align: center;
   padding: 12px;
-  color: #888;
   font-size: 13px;
 }
-[data-pull-refresh="pulling"]::before {
-  content: "Pull to refresh...";
-  display: block;
-  text-align: center;
-  padding: 12px;
-  color: #555;
-  font-size: 13px;
-}
+[data-pull-refresh="ready"]::before  { content: "Release to refresh"; color: #888; }
+[data-pull-refresh="pulling"]::before { content: "Pull to refresh..."; color: #555; }
 
 /* Admin console */
 .console-bubble {

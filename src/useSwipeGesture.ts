@@ -8,6 +8,8 @@ export function useSwipeGesture(
   onSwipe: () => void,
 ) {
   const start = useRef<{ x: number; y: number } | null>(null);
+  const onSwipeRef = useRef(onSwipe);
+  onSwipeRef.current = onSwipe;
 
   useEffect(() => {
     const el = ref.current;
@@ -26,10 +28,10 @@ export function useSwipeGesture(
       start.current = null;
 
       if (direction === "right" && dx > threshold && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        onSwipe();
+        onSwipeRef.current();
       }
       if (direction === "down" && dy > threshold && Math.abs(dy) > Math.abs(dx) * 1.5) {
-        onSwipe();
+        onSwipeRef.current();
       }
     };
 
@@ -39,5 +41,5 @@ export function useSwipeGesture(
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchend", onTouchEnd);
     };
-  }, [ref, direction, threshold, onSwipe]);
+  }, [ref, direction, threshold]);
 }
