@@ -11,8 +11,19 @@ export default function GeneralChat({ roomId, userId, userName, db }: RoomProps)
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isNearBottom = useRef(true);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // Auto-scroll only if user is already near the bottom
+  useEffect(() => {
+    if (isNearBottom.current) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Clean up timers on unmount
+  useEffect(() => () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
 
   // Swipe down to dismiss keyboard
   const dismissKeyboard = useCallback(() => (document.activeElement as HTMLElement)?.blur(), []);
@@ -23,6 +34,7 @@ export default function GeneralChat({ roomId, userId, userName, db }: RoomProps)
     const el = messagesRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    isNearBottom.current = atBottom;
     setShowScrollBtn(!atBottom);
   };
 
@@ -43,7 +55,8 @@ export default function GeneralChat({ roomId, userId, userName, db }: RoomProps)
         await navigator.clipboard.writeText(msgText);
         if (navigator.vibrate) navigator.vibrate(10);
         setCopiedId(msgId);
-        setTimeout(() => setCopiedId(null), 1200);
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setCopiedId(null), 1200);
       } catch { /* clipboard not available */ }
     }, 500);
   };

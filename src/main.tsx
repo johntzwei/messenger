@@ -9,7 +9,26 @@ import { useSwipeGesture } from "./useSwipeGesture";
 import { usePullToRefresh } from "./usePullToRefresh";
 import Home from "./Home";
 import rooms from "./rooms";
+import type { RoomProps } from "./rooms";
 import "./index.css";
+
+function RoomView({ onBack, ...roomProps }: { onBack: () => void } & RoomProps) {
+  const pageRef = useRef<HTMLDivElement>(null);
+  useSwipeGesture(pageRef, "right", 80, onBack);
+  const Room = rooms[roomProps.roomId].component;
+  return (
+    <div className="page" ref={pageRef}>
+      <div className="header">
+        <button className="header-back" onClick={onBack}>&larr; Back</button>
+        <span style={{ fontWeight: "bold" }}>{rooms[roomProps.roomId].name}</span>
+        <span className="header-user">{roomProps.userName}</span>
+      </div>
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <Room {...roomProps} />
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -18,11 +37,9 @@ function App() {
   const { emails: allowedEmails, loading: allowlistLoading } = useAllowlist(db);
   const { permission, supported, requestPermission } = useNotifications(db, user?.uid ?? null);
 
-  const roomPageRef = useRef<HTMLDivElement>(null);
   const homeListRef = useRef<HTMLDivElement>(null);
 
   const goBack = useCallback(() => setCurrentRoom(null), []);
-  useSwipeGesture(roomPageRef, "right", 80, goBack);
   usePullToRefresh(homeListRef);
 
   useEffect(() => onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); }), []);
@@ -50,18 +67,15 @@ function App() {
   }
 
   if (currentRoom && rooms[currentRoom]) {
-    const Room = rooms[currentRoom].component;
     return (
-      <div className="page" ref={roomPageRef}>
-        <div className="header">
-          <button className="header-back" onClick={goBack}>&larr; Back</button>
-          <span style={{ fontWeight: "bold" }}>{rooms[currentRoom].name}</span>
-          <span className="header-user">{user.displayName}</span>
-        </div>
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          <Room roomId={currentRoom} userId={user.uid} userName={user.displayName || "Anonymous"} userEmail={user.email || ""} db={db} />
-        </div>
-      </div>
+      <RoomView
+        roomId={currentRoom}
+        onBack={goBack}
+        userId={user.uid}
+        userName={user.displayName || "Anonymous"}
+        userEmail={user.email || ""}
+        db={db}
+      />
     );
   }
 
@@ -76,9 +90,7 @@ function App() {
         )}
         <button className="header-signout" onClick={() => signOut(auth)}>Sign out</button>
       </div>
-      <div ref={homeListRef} style={{ flex: 1, overflow: "auto" }}>
-        <Home onSelectRoom={setCurrentRoom} />
-      </div>
+      <Home ref={homeListRef} onSelectRoom={setCurrentRoom} />
     </div>
   );
 }
