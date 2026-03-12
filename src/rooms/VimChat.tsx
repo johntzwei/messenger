@@ -119,7 +119,7 @@ export default function VimChat({ roomId, userId, userName, db }: RoomProps) {
               value=""
               extensions={extensions}
               onCreateEditor={onCreateEditor}
-              basicSetup={false}
+              basicSetup
               placeholder="Press i to type..."
             />
           </div>
