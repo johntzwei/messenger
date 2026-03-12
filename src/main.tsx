@@ -5,7 +5,7 @@ import type { User } from "firebase/auth";
 import { auth, db, googleProvider } from "./firebase";
 import { useAllowlist } from "./useAllowlist";
 import { useNotifications } from "./useNotifications";
-import { useSwipeGesture } from "./useSwipeGesture";
+import { useSwipeBack } from "./useSwipeBack";
 import { usePullToRefresh } from "./usePullToRefresh";
 import Home from "./Home";
 import rooms from "./rooms";
@@ -14,7 +14,7 @@ import "./index.css";
 
 function RoomView({ onBack, ...roomProps }: { onBack: () => void } & RoomProps) {
   const pageRef = useRef<HTMLDivElement>(null);
-  useSwipeGesture(pageRef, "right", 80, onBack);
+  useSwipeBack(pageRef, onBack);
   const Room = rooms[roomProps.roomId].component;
   return (
     <div className="page" ref={pageRef}>
