@@ -270,12 +270,13 @@ body {
 
 .vim-editor-wrapper { flex: 1; min-width: 0; }
 .vim-editor-wrapper .cm-editor {
-  border: 1px solid #444;
+  border: 1px solid #0a0;
   border-radius: 20px;
   max-height: 80px;
   overflow-y: auto;
+  background: #000 !important;
 }
-.vim-editor-wrapper .cm-editor.cm-focused { outline: none; border-color: #2a6; }
+.vim-editor-wrapper .cm-editor.cm-focused { outline: none; border-color: #0f0; }
 .vim-editor-wrapper .cm-scroller { overflow-x: hidden; }
 .vim-editor-wrapper .cm-vim-panel { display: none; }
 .vim-editor-wrapper .cm-line { font-size: 16px; }

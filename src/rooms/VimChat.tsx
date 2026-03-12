@@ -10,21 +10,28 @@ import type { RoomProps } from "./index";
 const darkTheme = EditorView.theme(
   {
     "&": {
-      backgroundColor: "#1a1a1a",
-      color: "#fff",
+      backgroundColor: "#000 !important",
+      color: "#0f0 !important",
       fontSize: "16px",
     },
     ".cm-content": {
-      caretColor: "#2a6",
+      caretColor: "#0f0",
+      color: "#0f0 !important",
       padding: "10px 14px",
       fontFamily: "monospace",
       minHeight: "auto",
     },
+    ".cm-line": {
+      color: "#0f0 !important",
+    },
+    ".cm-placeholder": {
+      color: "#0a0 !important",
+    },
     ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "#2a6",
+      borderLeftColor: "#0f0",
     },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-      backgroundColor: "rgba(42,170,102,0.3) !important",
+      backgroundColor: "rgba(0,255,0,0.2) !important",
     },
     ".cm-gutters": { display: "none" },
     ".cm-activeLineGutter": { display: "none" },
