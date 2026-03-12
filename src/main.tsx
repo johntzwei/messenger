@@ -1,10 +1,12 @@
-import { StrictMode, useState, useEffect } from "react";
+import { StrictMode, useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { auth, db, googleProvider } from "./firebase";
 import { useAllowlist } from "./useAllowlist";
 import { useNotifications } from "./useNotifications";
+import { useSwipeGesture } from "./useSwipeGesture";
+import { usePullToRefresh } from "./usePullToRefresh";
 import Home from "./Home";
 import rooms from "./rooms";
 import "./index.css";
@@ -15,6 +17,13 @@ function App() {
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const { emails: allowedEmails, loading: allowlistLoading } = useAllowlist(db);
   const { permission, supported, requestPermission } = useNotifications(db, user?.uid ?? null);
+
+  const roomPageRef = useRef<HTMLDivElement>(null);
+  const homeListRef = useRef<HTMLDivElement>(null);
+
+  const goBack = useCallback(() => setCurrentRoom(null), []);
+  useSwipeGesture(roomPageRef, "right", 80, goBack);
+  usePullToRefresh(homeListRef);
 
   useEffect(() => onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); }), []);
 
@@ -43,9 +52,9 @@ function App() {
   if (currentRoom && rooms[currentRoom]) {
     const Room = rooms[currentRoom].component;
     return (
-      <div className="page">
+      <div className="page" ref={roomPageRef}>
         <div className="header">
-          <button className="header-back" onClick={() => setCurrentRoom(null)}>&larr; Back</button>
+          <button className="header-back" onClick={goBack}>&larr; Back</button>
           <span style={{ fontWeight: "bold" }}>{rooms[currentRoom].name}</span>
           <span className="header-user">{user.displayName}</span>
         </div>
@@ -67,7 +76,9 @@ function App() {
         )}
         <button className="header-signout" onClick={() => signOut(auth)}>Sign out</button>
       </div>
-      <Home onSelectRoom={setCurrentRoom} />
+      <div ref={homeListRef} style={{ flex: 1, overflow: "auto" }}>
+        <Home onSelectRoom={setCurrentRoom} />
+      </div>
     </div>
   );
 }

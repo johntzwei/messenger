@@ -73,7 +73,7 @@ export default function AdminConsole({ userEmail, db }: RoomProps) {
         <div ref={bottomRef} />
       </div>
       <div className="chat-input-row">
-        <input className="chat-input mono" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="@help" />
+        <input className="chat-input mono" type="text" autoComplete="off" name="command" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder="@help" />
         <button className="chat-send" onClick={handleSend}>Run</button>
       </div>
     </div>
