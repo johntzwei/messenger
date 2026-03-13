@@ -88,9 +88,6 @@ exports.sendNewMessageNotification = onDocumentCreated(
     const mentionedUserIds = await parseMentionedUserIds(db, text);
     if (mentionedUserIds.size === 0) return;
 
-    // Don't notify the sender even if they @mentioned themselves
-    mentionedUserIds.delete(senderId);
-
     const tokensSnap = await db.collection("fcmTokens").get();
     const tokens = [];
     tokensSnap.forEach((doc) => {
