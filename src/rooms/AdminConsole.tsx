@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { useAllowlist } from "../useAllowlist";
+import { useNicknames } from "../useNicknames";
 import type { RoomProps } from "./index";
 
 const ADMIN_EMAIL = "johntzwei@gmail.com";
@@ -20,6 +22,7 @@ const appendLog = (prev: LogEntry[], ...entries: LogEntry[]) =>
 
 export default function AdminConsole({ userEmail, db }: RoomProps) {
   const { emails, add, remove } = useAllowlist(db);
+  const { nicknames, set: setNick, remove: removeNick } = useNicknames(db);
   const [text, setText] = useState("");
   const [log, setLog] = useState<LogEntry[]>([msg("Admin Console. Type @help for commands.")]);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -34,7 +37,7 @@ export default function AdminConsole({ userEmail, db }: RoomProps) {
     const cmd = parts[0].slice(1).toLowerCase();
     const arg = parts[1]?.toLowerCase();
 
-    if (cmd === "help") return [msg("@list — Show users\n@add <email> — Add user\n@remove <email> — Remove user\n@help — This message")];
+    if (cmd === "help") return [msg("@list — Show users\n@add <email> — Add user\n@remove <email> — Remove user\n@nicks — Show nicknames\n@nick <name> <email> — Set nickname\n@unnick <name> — Remove nickname\n@help — This message")];
     if (cmd === "list") return [msg(emails.length ? emails.map((e, i) => `${i + 1}. ${e}`).join("\n") : "No users.")];
     if (cmd === "add") {
       if (!arg?.includes("@")) return [msg("Usage: @add <email>", "err")];
@@ -48,6 +51,36 @@ export default function AdminConsole({ userEmail, db }: RoomProps) {
       if (arg === ADMIN_EMAIL) return [msg("Can't remove admin.", "err")];
       await remove(arg);
       return [msg(`Removed ${arg}.`)];
+    }
+    if (cmd === "nicks") {
+      if (nicknames.length === 0) return [msg("No nicknames set.")];
+      // Resolve UIDs to emails for display
+      const usersSnap = await getDocs(collection(db, "users"));
+      const uidToEmail: Record<string, string> = {};
+      usersSnap.forEach((d) => { uidToEmail[d.id] = d.data().email || d.id; });
+      return [msg(nicknames.map((n) =>
+        `@${n.nickname} → ${n.uids.map((uid) => uidToEmail[uid] || uid).join(", ")}`
+      ).join("\n"))];
+    }
+    if (cmd === "nick") {
+      const name = parts[1]?.toLowerCase();
+      const email = parts[2]?.toLowerCase();
+      if (!name || !email) return [msg("Usage: @nick <name> <email>", "err")];
+      // Resolve email to UID via users collection
+      const usersSnap = await getDocs(query(collection(db, "users"), where("email", "==", email)));
+      if (usersSnap.empty) return [msg(`No user found with email ${email}. They need to log in first.`, "err")];
+      const uid = usersSnap.docs[0].id;
+      const existing = nicknames.find((n) => n.nickname === name);
+      const uids = existing ? [...new Set([...existing.uids, uid])] : [uid];
+      await setNick(name, uids);
+      const uidEmails = uids.length > 1 ? ` (${uids.length} accounts)` : "";
+      return [msg(`@${name} → ${email}${uidEmails}`)];
+    }
+    if (cmd === "unnick") {
+      const name = parts[1]?.toLowerCase();
+      if (!name) return [msg("Usage: @unnick <name>", "err")];
+      await removeNick(name);
+      return [msg(`Removed @${name}.`)];
     }
     return [msg(`Unknown: @${cmd}`, "err")];
   };

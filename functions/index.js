@@ -9,6 +9,27 @@ const ADMIN_KEY = defineSecret("ADMIN_KEY");
 
 initializeApp();
 
+// Parse @mentions from text, look up nicknames in Firestore, return set of user IDs
+async function parseMentionedUserIds(db, text) {
+  const mentions = text.match(/@(\w+)/g);
+  if (!mentions) return new Set();
+
+  const nicknames = [...new Set(mentions.map((m) => m.slice(1).toLowerCase()))];
+  const userIds = new Set();
+
+  // NOTE: [performance improvement] Could batch these into a single query with `where in`
+  // if the nicknames collection grows large, but for a small group individual reads are fine.
+  await Promise.all(nicknames.map(async (nickname) => {
+    const snap = await db.collection("nicknames").doc(nickname).get();
+    if (snap.exists) {
+      const uids = snap.data().uids || [];
+      uids.forEach((uid) => userIds.add(uid));
+    }
+  }));
+
+  return userIds;
+}
+
 // Admin API for debugging — query any Firestore collection
 // GET ?key=...                              → overview of allowedUsers + fcmTokens
 // GET ?key=...&collection=rooms/general/messages&limit=5&orderBy=timestamp&order=desc
@@ -27,6 +48,17 @@ exports.adminQuery = onRequest({ secrets: [ADMIN_KEY] }, async (req, res) => {
       result[c] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
     res.json(result);
+    return;
+  }
+
+  // POST: write a document — ?collection=users&doc=abc123  body: { email: "..." }
+  if (req.method === "POST" && col && req.query.doc) {
+    try {
+      await db.collection(col).doc(req.query.doc).set(req.body, { merge: true });
+      res.json({ ok: true, doc: req.query.doc });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
     return;
   }
 
@@ -49,13 +81,20 @@ exports.sendNewMessageNotification = onDocumentCreated(
     if (!message) return;
 
     const { senderName, text, senderId } = message;
+    if (!text) return;
     const db = getFirestore();
 
-    // Get all FCM tokens except the sender's
+    // Only notify users who were @mentioned
+    const mentionedUserIds = await parseMentionedUserIds(db, text);
+    if (mentionedUserIds.size === 0) return;
+
+    // Don't notify the sender even if they @mentioned themselves
+    mentionedUserIds.delete(senderId);
+
     const tokensSnap = await db.collection("fcmTokens").get();
     const tokens = [];
     tokensSnap.forEach((doc) => {
-      if (doc.id !== senderId) {
+      if (mentionedUserIds.has(doc.id)) {
         tokens.push({ id: doc.id, token: doc.data().token });
       }
     });

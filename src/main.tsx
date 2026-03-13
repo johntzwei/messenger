@@ -2,6 +2,7 @@ import { StrictMode, useState, useEffect, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import type { User } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "./firebase";
 import { useAllowlist } from "./useAllowlist";
 import { useNotifications } from "./useNotifications";
@@ -42,7 +43,12 @@ function App() {
   const goBack = useCallback(() => setCurrentRoom(null), []);
   usePullToRefresh(homeListRef);
 
-  useEffect(() => onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); }), []);
+  useEffect(() => onAuthStateChanged(auth, (u) => {
+    setUser(u);
+    setLoading(false);
+    // Write user profile so admin console can resolve emails to UIDs
+    if (u) setDoc(doc(db, 'users', u.uid), { email: u.email, displayName: u.displayName }, { merge: true });
+  }), []);
 
   if (loading || allowlistLoading) return <div className="center">Loading...</div>;
 
