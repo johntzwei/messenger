@@ -4,6 +4,7 @@ import GeneralChat from "./GeneralChat";
 import AdminConsole from "./AdminConsole";
 import VimChat from "./VimChat";
 import MirrorChat from "./MirrorChat";
+import Leaderboard from "./Leaderboard";
 
 export interface RoomProps {
   roomId: string;
@@ -18,6 +19,7 @@ const rooms: Record<string, { name: string; component: ComponentType<RoomProps> 
   admin: { name: "Admin Console", component: AdminConsole },
   vim: { name: "Vim Users Only", component: VimChat },
   mirror: { name: "Mirror World", component: MirrorChat },
+  leaderboard: { name: "Leaderboard", component: Leaderboard },
 };
 
 export default rooms;

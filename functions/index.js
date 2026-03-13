@@ -1,7 +1,7 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onRequest } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { defineSecret } = require("firebase-functions/params");
 
@@ -82,7 +82,15 @@ exports.sendNewMessageNotification = onDocumentCreated(
 
     const { senderName, text, senderId } = message;
     if (!text) return;
+    const roomId = event.params.roomId;
     const db = getFirestore();
+
+    // NOTE: [thought process] Using set+merge with nested object so Firestore merges
+    // into the rooms map without overwriting other room counts.
+    await db.collection("stats").doc(senderId).set({
+      total: FieldValue.increment(1),
+      rooms: { [roomId]: FieldValue.increment(1) },
+    }, { merge: true });
 
     // Only notify users who were @mentioned
     const mentionedUserIds = await parseMentionedUserIds(db, text);
