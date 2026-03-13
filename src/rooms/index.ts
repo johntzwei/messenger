@@ -3,6 +3,7 @@ import type { Firestore } from "firebase/firestore";
 import GeneralChat from "./GeneralChat";
 import AdminConsole from "./AdminConsole";
 import VimChat from "./VimChat";
+import MirrorChat from "./MirrorChat";
 
 export interface RoomProps {
   roomId: string;
@@ -16,6 +17,7 @@ const rooms: Record<string, { name: string; component: ComponentType<RoomProps> 
   general: { name: "General", component: GeneralChat },
   admin: { name: "Admin Console", component: AdminConsole },
   vim: { name: "Vim Users Only", component: VimChat },
+  mirror: { name: "Mirror World", component: MirrorChat },
 };
 
 export default rooms;
