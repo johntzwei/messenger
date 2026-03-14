@@ -135,66 +135,45 @@ exports.sendNewMessageNotification = onDocumentCreated(
   },
 );
 
+async function deleteCollection(db, path) {
+  const snap = await db.collection(path).get();
+  let batch = db.batch();
+  let count = 0;
+  for (const d of snap.docs) {
+    batch.delete(d.ref);
+    if (++count >= 500) { await batch.commit(); batch = db.batch(); count = 0; }
+  }
+  if (count > 0) await batch.commit();
+}
+
+function wellMessage(db, text) {
+  return db.collection("rooms/wishingwell/messages").add({
+    text, senderId: "well", senderName: "The Well", timestamp: FieldValue.serverTimestamp(),
+  });
+}
+
 // Wishing Well: when 3 users wish, clear all messages across all rooms
 exports.processWishingWell = onDocumentWritten(
   "rooms/wishingwell/meta/votes",
   async (event) => {
-    const after = event.data?.after?.data();
-    if (!after || !after.voters) return;
+    const voters = event.data?.after?.data()?.voters;
+    if (!voters) return;
 
-    const voters = after.voters;
-    const voterCount = Object.keys(voters).length;
-    if (voterCount < 1) return; // Reset write or empty — ignore
+    const count = Object.keys(voters).length;
+    if (count < 1) return;
 
     const db = getFirestore();
-    const wellMessages = db.collection("rooms").doc("wishingwell").collection("messages");
 
-    if (voterCount < 3) {
-      const remaining = 3 - voterCount;
-      const phrases = {
-        2: "The well stirs... two more souls must speak their truth.",
-        1: "The waters grow restless... one final wish awaits.",
-      };
-      await wellMessages.add({
-        text: phrases[remaining],
-        senderId: "well",
-        senderName: "The Well",
-        timestamp: FieldValue.serverTimestamp(),
-      });
+    if (count < 3) {
+      const phrases = { 2: "The well stirs... two more souls must speak their truth.", 1: "The waters grow restless... one final wish awaits." };
+      await wellMessage(db, phrases[3 - count]);
       return;
     }
 
-    // 3+ wishes — clear all messages in every room
-    const roomIds = ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell"];
-    for (const roomId of roomIds) {
-      const messagesRef = db.collection("rooms").doc(roomId).collection("messages");
-      let batch = db.batch();
-      let count = 0;
-      const snap = await messagesRef.get();
-      for (const msgDoc of snap.docs) {
-        batch.delete(msgDoc.ref);
-        count++;
-        if (count >= 500) {
-          await batch.commit();
-          batch = db.batch();
-          count = 0;
-        }
-      }
-      if (count > 0) await batch.commit();
+    for (const room of ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell"]) {
+      await deleteCollection(db, `rooms/${room}/messages`);
     }
-
-    // Post fulfillment message after clearing
-    await wellMessages.add({
-      text: "Together, your determination fulfills the wish. The slate is wiped clean.",
-      senderId: "well",
-      senderName: "The Well",
-      timestamp: FieldValue.serverTimestamp(),
-    });
-
-    // Reset votes
-    await db.doc("rooms/wishingwell/meta/votes").set({
-      voters: {},
-      lastCleared: FieldValue.serverTimestamp(),
-    });
+    await wellMessage(db, "Your collective determination fulfills the wish. The slate is wiped clean.");
+    await db.doc("rooms/wishingwell/meta/votes").set({ voters: {}, lastCleared: FieldValue.serverTimestamp() });
   },
 );
