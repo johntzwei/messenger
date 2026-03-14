@@ -276,6 +276,11 @@ export default function ElizaChat({ roomId, userId, userName, db }: RoomProps) {
   // new messages.
   const lastProcessedId = useRef<string | null>(null);
   const initialLoad = useRef(true);
+  // NOTE: [thought process] We track which message ID has a pending ELIZA response so that
+  // when serverTimestamp() resolution causes a second snapshot (re-running the effect), we
+  // don't cancel the in-flight timer. Without this, the effect cleanup would clear the 500ms
+  // delay timer before ELIZA ever responds.
+  const pendingResponseForId = useRef<string | null>(null);
 
   // Respond to the latest user message with ELIZA
   useEffect(() => {
@@ -303,12 +308,15 @@ export default function ElizaChat({ roomId, userId, userName, db }: RoomProps) {
     }
 
     const response = getElizaResponse(latest.text);
+    pendingResponseForId.current = latest.id;
     // NOTE: [thought process] Small delay makes ELIZA feel more conversational,
     // as if she is "thinking" about her response.
-    const timer = setTimeout(() => {
-      sendAsSystem('ELIZA', response);
+    setTimeout(() => {
+      if (pendingResponseForId.current === latest.id) {
+        sendAsSystem('ELIZA', response);
+        pendingResponseForId.current = null;
+      }
     }, 500);
-    return () => clearTimeout(timer);
   }, [messages]);
 
   useEffect(() => {
