@@ -295,6 +295,13 @@ export default function ElizaChat({ roomId, userId, userName, db }: RoomProps) {
     if (latest.senderId === ELIZA_SENDER_ID) return;
     if (latest.senderId !== userId) return;
 
+    // @clear resets ELIZA's memory and introduces a fresh instance
+    if (/@clear\b/i.test(latest.text)) {
+      responseCounters.clear();
+      sendAsSystem('ELIZA', 'A new ELIZA has entered the room. How can I help you today?');
+      return;
+    }
+
     const response = getElizaResponse(latest.text);
     // NOTE: [thought process] Small delay makes ELIZA feel more conversational,
     // as if she is "thinking" about her response.
