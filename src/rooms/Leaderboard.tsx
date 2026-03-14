@@ -3,12 +3,11 @@ import { collection, getDocs } from 'firebase/firestore';
 import { useMessages } from '../useMessages';
 import { useNicknames } from '../useNicknames';
 import { useSwipeGesture } from '../useSwipeGesture';
+import { isSystemMessage } from '../systemMessage';
 import type { RoomProps } from './index';
 
-const SYSTEM_SENDER = '__system__';
-
 export default function Leaderboard({ roomId, userId, userName, db }: RoomProps) {
-  const { messages, send, error } = useMessages(db, roomId, userId, userName);
+  const { messages, send, sendAsSystem, error } = useMessages(db, roomId, userId, userName);
   const { nicknames } = useNicknames(db);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -90,14 +89,7 @@ export default function Leaderboard({ roomId, userId, userName, db }: RoomProps)
     if (/@leaderboard\b/i.test(input)) {
       setLoading(true);
       const leaderboardText = await buildLeaderboard();
-      // Write system response as a message visible to everyone
-      const { addDoc, collection: col, serverTimestamp } = await import('firebase/firestore');
-      await addDoc(col(db, 'rooms', roomId, 'messages'), {
-        text: leaderboardText,
-        senderId: SYSTEM_SENDER,
-        senderName: 'System',
-        timestamp: serverTimestamp(),
-      });
+      sendAsSystem('System', leaderboardText);
       setLoading(false);
     }
   };
@@ -106,16 +98,19 @@ export default function Leaderboard({ roomId, userId, userName, db }: RoomProps)
     <div className="chat">
       <div className="chat-messages" ref={messagesRef} onScroll={handleScroll}>
         {error && <div className="error-text" style={{ padding: '12px' }}>Error: {error}</div>}
-        {messages.map((m) => (
-          <div key={m.id} className={`chat-row${m.senderId === userId ? ' mine' : ''}`}>
-            <div className="chat-sender">{m.senderName}</div>
-            <div className={`chat-bubble${m.senderId === userId ? ' mine' : ''}${m.senderId === SYSTEM_SENDER ? ' system' : ''}`}
-              style={m.senderId === SYSTEM_SENDER ? { whiteSpace: 'pre', fontFamily: 'monospace', fontSize: '13px' } : undefined}
-            >
-              {m.text}
+        {messages.map((m) => {
+          const isSystem = isSystemMessage(m.senderId);
+          return (
+            <div key={m.id} className={`chat-row${m.senderId === userId ? ' mine' : ''}`}>
+              <div className="chat-sender">{m.senderName}</div>
+              <div className={`chat-bubble${m.senderId === userId ? ' mine' : ''}${isSystem ? ' system' : ''}`}
+                style={isSystem ? { whiteSpace: 'pre' } : undefined}
+              >
+                {m.text}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {loading && (
           <div className="chat-row">
             <div className="chat-sender">System</div>

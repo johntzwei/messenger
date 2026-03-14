@@ -149,6 +149,12 @@ body {
   word-break: break-word;
 }
 .chat-bubble.mine { background: #2a6; }
+.chat-bubble.system {
+  background: #2a3a2a;
+  color: #b5d4b5;
+  font-family: monospace;
+  font-size: 13px;
+}
 .chat-input-row {
   display: flex;
   padding: 10px 12px;

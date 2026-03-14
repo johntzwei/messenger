@@ -41,13 +41,13 @@ export function useMessages(db: Firestore, roomId: string, userId: string, userN
     return unsub;
   }, [db, roomId]);
 
-  const send = async (text: string) => {
+  const send = async (text: string, overrideSenderId?: string, overrideSenderName?: string) => {
     if (!text.trim()) return;
     try {
       await addDoc(collection(db, "rooms", roomId, "messages"), {
         text: text.trim(),
-        senderId: userId,
-        senderName: userName,
+        senderId: overrideSenderId ?? userId,
+        senderName: overrideSenderName ?? userName,
         timestamp: serverTimestamp(),
       });
     } catch (err: any) {
@@ -56,5 +56,8 @@ export function useMessages(db: Firestore, roomId: string, userId: string, userN
     }
   };
 
-  return { messages, send, error };
+  const sendAsSystem = (name: string, text: string, id?: string) =>
+    send(text, id ?? `__${name.toLowerCase()}__`, name);
+
+  return { messages, send, sendAsSystem, error };
 }
