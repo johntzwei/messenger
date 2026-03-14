@@ -270,17 +270,26 @@ export default function ElizaChat({ roomId, userId, userName, db }: RoomProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNearBottom = useRef(true);
-  // NOTE: [thought process] We track the last message count to detect when a new user
-  // message arrives that needs an ELIZA response, avoiding duplicate responses on
-  // re-renders or when ELIZA's own messages come through the listener.
-  const lastProcessedCount = useRef(0);
+  // NOTE: [thought process] We track the last processed message ID rather than array
+  // length because useMessages uses limit(50) — once there are 50+ messages, the array
+  // length stays constant as old messages drop off, which would prevent detection of
+  // new messages.
+  const lastProcessedId = useRef<string | null>(null);
+  const initialLoad = useRef(true);
 
   // Respond to the latest user message with ELIZA
   useEffect(() => {
-    if (messages.length === 0 || messages.length <= lastProcessedCount.current) return;
-    lastProcessedCount.current = messages.length;
-
+    if (messages.length === 0) return;
     const latest = messages[messages.length - 1];
+    if (latest.id === lastProcessedId.current) return;
+    lastProcessedId.current = latest.id;
+
+    // Skip the initial load — only respond to messages sent during this session
+    if (initialLoad.current) {
+      initialLoad.current = false;
+      return;
+    }
+
     // Only respond to human messages, not ELIZA's own.
     // Only the sender's client generates the reply to avoid duplicates in multiplayer.
     if (latest.senderId === ELIZA_SENDER_ID) return;
@@ -291,7 +300,7 @@ export default function ElizaChat({ roomId, userId, userName, db }: RoomProps) {
     // as if she is "thinking" about her response.
     const timer = setTimeout(() => {
       sendAsSystem('ELIZA', response);
-    }, 800);
+    }, 500);
     return () => clearTimeout(timer);
   }, [messages]);
 
