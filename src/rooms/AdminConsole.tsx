@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { useAllowlist } from "../useAllowlist";
+import { useGuestPasses } from "../useGuestPasses";
 import { useNicknames } from "../useNicknames";
 import type { RoomProps } from "./index";
 
@@ -22,6 +23,7 @@ const appendLog = (prev: LogEntry[], ...entries: LogEntry[]) =>
 
 export default function AdminConsole({ userEmail, db }: RoomProps) {
   const { emails, add, remove } = useAllowlist(db);
+  const { passes, grant, revoke } = useGuestPasses(db);
   const { nicknames, set: setNick, remove: removeNick } = useNicknames(db);
   const [text, setText] = useState("");
   const [log, setLog] = useState<LogEntry[]>([msg("Admin Console. Type @help for commands.")]);
@@ -37,7 +39,7 @@ export default function AdminConsole({ userEmail, db }: RoomProps) {
     const cmd = parts[0].slice(1).toLowerCase();
     const arg = parts[1]?.toLowerCase();
 
-    if (cmd === "help") return [msg("@list — Show users\n@add <email> — Add user\n@remove <email> — Remove user\n@nicks — Show nicknames\n@nick <name> <email> — Set nickname\n@unnick <name> — Remove nickname\n@help — This message")];
+    if (cmd === "help") return [msg("@list — Show users\n@add <email> — Add user\n@remove <email> — Remove user\n@guest <email> [hours] — Grant guest pass (default 24h)\n@guests — Show guest passes\n@revoke <email> — Revoke guest pass\n@nicks — Show nicknames\n@nick <name> <email> — Set nickname\n@unnick <name> — Remove nickname\n@help — This message")];
     if (cmd === "list") return [msg(emails.length ? emails.map((e, i) => `${i + 1}. ${e}`).join("\n") : "No users.")];
     if (cmd === "add") {
       if (!arg?.includes("@")) return [msg("Usage: @add <email>", "err")];
@@ -51,6 +53,29 @@ export default function AdminConsole({ userEmail, db }: RoomProps) {
       if (arg === ADMIN_EMAIL) return [msg("Can't remove admin.", "err")];
       await remove(arg);
       return [msg(`Removed ${arg}.`)];
+    }
+    if (cmd === "guest") {
+      if (!arg?.includes("@")) return [msg("Usage: @guest <email> [hours]", "err")];
+      const hours = parts[2] ? parseInt(parts[2], 10) : 24;
+      if (isNaN(hours) || hours <= 0) return [msg("Hours must be a positive number.", "err")];
+      await grant(arg, hours);
+      return [msg(`Guest pass granted to ${arg} for ${hours}h.`)];
+    }
+    if (cmd === "guests") {
+      if (passes.length === 0) return [msg("No guest passes.")];
+      const now = new Date();
+      const lines = passes.map((p) => {
+        const remaining = p.expiresAt.getTime() - now.getTime();
+        if (remaining <= 0) return `${p.email} — EXPIRED`;
+        const hoursLeft = Math.round(remaining / 3600000 * 10) / 10;
+        return `${p.email} — ${hoursLeft}h remaining`;
+      });
+      return [msg(lines.join("\n"))];
+    }
+    if (cmd === "revoke") {
+      if (!arg) return [msg("Usage: @revoke <email>", "err")];
+      await revoke(arg);
+      return [msg(`Revoked guest pass for ${arg}.`)];
     }
     if (cmd === "nicks") {
       if (nicknames.length === 0) return [msg("No nicknames set.")];

@@ -5,6 +5,7 @@ import type { User } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "./firebase";
 import { useAllowlist } from "./useAllowlist";
+import { useGuestPasses } from "./useGuestPasses";
 import { useNotifications } from "./useNotifications";
 import { useSwipeBack } from "./useSwipeBack";
 import { usePullToRefresh } from "./usePullToRefresh";
@@ -36,6 +37,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const { emails: allowedEmails, loading: allowlistLoading } = useAllowlist(db);
+  const { validEmails: guestEmails, loading: guestLoading } = useGuestPasses(db);
   const { permission, supported, requestPermission } = useNotifications(db, user?.uid ?? null);
 
   const homeListRef = useRef<HTMLDivElement>(null);
@@ -50,7 +52,7 @@ function App() {
     if (u) setDoc(doc(db, 'users', u.uid), { email: u.email, displayName: u.displayName }, { merge: true });
   }), []);
 
-  if (loading || allowlistLoading) return <div className="center">Loading...</div>;
+  if (loading || allowlistLoading || guestLoading) return <div className="center">Loading...</div>;
 
   if (!user) {
     return (
@@ -62,7 +64,9 @@ function App() {
     );
   }
 
-  if (allowedEmails.length > 0 && !allowedEmails.includes(user.email || "")) {
+  const userEmail = user.email || '';
+  const hasAccess = allowedEmails.includes(userEmail) || guestEmails.includes(userEmail);
+  if (allowedEmails.length > 0 && !hasAccess) {
     return (
       <div className="center">
         <h1>Johnny's Messenger</h1>
