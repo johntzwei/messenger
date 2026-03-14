@@ -7,6 +7,7 @@ import MirrorChat from "./MirrorChat";
 import Leaderboard from "./Leaderboard";
 import WishingWell from "./WishingWell";
 import ElizaChat from "./ElizaChat";
+import AliceChat from "./AliceChat";
 
 export interface RoomProps {
   roomId: string;
@@ -24,6 +25,7 @@ const rooms: Record<string, { name: string; component: ComponentType<RoomProps> 
   leaderboard: { name: "Leaderboard", component: Leaderboard },
   wishingwell: { name: "Wishing Well", component: WishingWell },
   eliza: { name: "Speak with ELIZA", component: ElizaChat },
+  alice: { name: "Alice in Wonderland", component: AliceChat },
 };
 
 export default rooms;

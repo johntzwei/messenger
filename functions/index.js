@@ -5,7 +5,10 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { defineSecret } = require("firebase-functions/params");
 
+const Anthropic = require("@anthropic-ai/sdk");
+
 const ADMIN_KEY = defineSecret("ADMIN_KEY");
+const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 
 initializeApp();
 
@@ -170,10 +173,100 @@ exports.processWishingWell = onDocumentWritten(
       return;
     }
 
-    for (const room of ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell"]) {
+    for (const room of ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell", "alice"]) {
       await deleteCollection(db, `rooms/${room}/messages`);
     }
     await wellMessage(db, "Your collective determination fulfills the wish. The slate is wiped clean.");
     await db.doc("rooms/wishingwell/meta/votes").set({ voters: {}, lastCleared: FieldValue.serverTimestamp() });
   },
 );
+
+// Alice in Wonderland: generates unprompted musings from Alice via Claude API
+const ALICE_SENDER_ID = '__alice__';
+const ALICE_MAX_MESSAGES = 10;
+const ALICE_SYSTEM_PROMPT = `You are Alice from Alice in Wonderland. You chose to stay in Wonderland forever because the real world felt too ordinary — why go back to lessons and tea times when there are talking flowers, mad hatters, and doors that lead to impossible places?
+
+You are in a chat room where visitors can read your messages. You speak unprompted, musing about your life in Wonderland — what you see, who you've been talking to, what curious thing just happened. You are whimsical, curious, and a little dreamy, but also sharp and witty in the way Lewis Carroll wrote you.
+
+Rules:
+- Write a single short message (1-3 sentences), as if you're thinking aloud or narrating a moment
+- Never break character. You ARE Alice, living in Wonderland
+- Reference specific Wonderland characters, places, and events naturally
+- Vary your tone: sometimes playful, sometimes contemplative, sometimes startled by something happening around you
+- You can see previous messages in the chat for context, but you mostly speak on your own terms
+- Do not use quotation marks around your message. Just speak naturally`;
+
+// NOTE: [thought process] Rate-limit Alice server-side so multiple clients calling
+// the endpoint don't make her speak faster than once every few seconds.
+const ALICE_COOLDOWN_MS = 5000;
+let aliceLastSpokeAt = 0;
+
+exports.aliceSpeak = onRequest({ secrets: [ANTHROPIC_API_KEY] }, async (req, res) => {
+  const now = Date.now();
+  if (now - aliceLastSpokeAt < ALICE_COOLDOWN_MS) {
+    res.json({ spoke: false, reason: 'cooldown' });
+    return;
+  }
+
+  const db = getFirestore();
+  const messagesRef = db.collection('rooms/alice/messages');
+
+  // Count existing Alice messages — stop at the cap
+  const aliceSnap = await messagesRef.where('senderId', '==', ALICE_SENDER_ID).count().get();
+  const aliceCount = aliceSnap.data().count;
+  if (aliceCount >= ALICE_MAX_MESSAGES) {
+    res.json({ spoke: false, reason: 'limit reached' });
+    return;
+  }
+
+  // Read recent messages for context
+  const recentSnap = await messagesRef.orderBy('timestamp', 'desc').limit(20).get();
+  const history = recentSnap.docs.reverse().map((doc) => {
+    const d = doc.data();
+    return { role: d.senderId === ALICE_SENDER_ID ? 'assistant' : 'user', content: `${d.senderName}: ${d.text}` };
+  });
+
+  // Collapse consecutive same-role messages so the API doesn't reject them
+  const collapsed = [];
+  for (const msg of history) {
+    if (collapsed.length > 0 && collapsed[collapsed.length - 1].role === msg.role) {
+      collapsed[collapsed.length - 1].content += '\n' + msg.content;
+    } else {
+      collapsed.push({ ...msg });
+    }
+  }
+
+  // NOTE: [thought process] The Claude API requires messages to start with a 'user' role.
+  // Since Alice speaks unprompted, the history may start with her own (assistant) messages.
+  // We prepend a narrator prompt so the conversation always begins with 'user'.
+  const messages = [
+    { role: 'user', content: '(You are in a chat room in Wonderland. Say something.)' },
+    ...collapsed,
+    { role: 'user', content: '(Continue musing about Wonderland. Say something new and different from what you have said before.)' },
+  ];
+
+  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 200,
+    system: ALICE_SYSTEM_PROMPT,
+    messages,
+  });
+
+  const text = response.content[0]?.text;
+  if (!text) {
+    console.error('Alice: unexpected API response', JSON.stringify(response.content));
+    res.status(500).json({ error: 'No text in response' });
+    return;
+  }
+
+  await messagesRef.add({
+    text,
+    senderId: ALICE_SENDER_ID,
+    senderName: 'Alice',
+    timestamp: FieldValue.serverTimestamp(),
+  });
+
+  aliceLastSpokeAt = Date.now();
+  res.json({ spoke: true, text, count: aliceCount + 1 });
+});
