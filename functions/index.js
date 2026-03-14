@@ -1,4 +1,4 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onRequest } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
@@ -132,5 +132,69 @@ exports.sendNewMessageNotification = onDocumentCreated(
     await Promise.all(staleTokenIds.map((id) =>
       db.collection("fcmTokens").doc(id).delete(),
     ));
+  },
+);
+
+// Wishing Well: when 3 users wish, clear all messages across all rooms
+exports.processWishingWell = onDocumentWritten(
+  "rooms/wishingwell/meta/votes",
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after || !after.voters) return;
+
+    const voters = after.voters;
+    const voterCount = Object.keys(voters).length;
+    if (voterCount < 1) return; // Reset write or empty — ignore
+
+    const db = getFirestore();
+    const wellMessages = db.collection("rooms").doc("wishingwell").collection("messages");
+
+    if (voterCount < 3) {
+      const remaining = 3 - voterCount;
+      const phrases = {
+        2: "The well stirs... two more souls must speak their truth.",
+        1: "The waters grow restless... one final wish awaits.",
+      };
+      await wellMessages.add({
+        text: phrases[remaining],
+        senderId: "well",
+        senderName: "The Well",
+        timestamp: FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    // 3+ wishes — clear all messages in every room
+    const roomIds = ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell"];
+    for (const roomId of roomIds) {
+      const messagesRef = db.collection("rooms").doc(roomId).collection("messages");
+      let batch = db.batch();
+      let count = 0;
+      const snap = await messagesRef.get();
+      for (const msgDoc of snap.docs) {
+        batch.delete(msgDoc.ref);
+        count++;
+        if (count >= 500) {
+          await batch.commit();
+          batch = db.batch();
+          count = 0;
+        }
+      }
+      if (count > 0) await batch.commit();
+    }
+
+    // Post fulfillment message after clearing
+    await wellMessages.add({
+      text: "Together, your determination fulfills the wish. The slate is wiped clean.",
+      senderId: "well",
+      senderName: "The Well",
+      timestamp: FieldValue.serverTimestamp(),
+    });
+
+    // Reset votes
+    await db.doc("rooms/wishingwell/meta/votes").set({
+      voters: {},
+      lastCleared: FieldValue.serverTimestamp(),
+    });
   },
 );
