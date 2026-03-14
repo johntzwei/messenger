@@ -173,7 +173,7 @@ exports.processWishingWell = onDocumentWritten(
       return;
     }
 
-    for (const room of ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell", "alice"]) {
+    for (const room of ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell", "alice", "eliza++"]) {
       await deleteCollection(db, `rooms/${room}/messages`);
     }
     await wellMessage(db, "Your collective determination fulfills the wish. The slate is wiped clean.");
@@ -183,7 +183,6 @@ exports.processWishingWell = onDocumentWritten(
 
 // Alice in Wonderland: generates unprompted musings from Alice via Claude API
 const ALICE_SENDER_ID = '__alice__';
-const ALICE_MAX_MESSAGES = 10;
 const ALICE_SYSTEM_PROMPT = `You are Alice from Alice in Wonderland. You chose to stay in Wonderland forever because the real world felt too ordinary — why go back to lessons and tea times when there are talking flowers, mad hatters, and doors that lead to impossible places?
 
 You are in a chat room where visitors can read your messages. You speak unprompted, musing about your life in Wonderland — what you see, who you've been talking to, what curious thing just happened. You are whimsical, curious, and a little dreamy, but also sharp and witty in the way Lewis Carroll wrote you.
@@ -196,8 +195,9 @@ Rules:
 - You can see previous messages in the chat for context, but you mostly speak on your own terms
 - Do not use quotation marks around your message. Just speak naturally`;
 
-// NOTE: [thought process] Rate-limit Alice server-side so multiple clients calling
-// the endpoint don't make her speak faster than once every few seconds.
+// NOTE: [thought process] Each client polls this endpoint up to 10 times while in the room.
+// The server enforces a 5s cooldown so multiple clients don't make Alice speak too fast.
+// Context is kept bounded by only reading the last 20 messages.
 const ALICE_COOLDOWN_MS = 5000;
 let aliceLastSpokeAt = 0;
 
@@ -207,19 +207,13 @@ exports.aliceSpeak = onRequest({ secrets: [ANTHROPIC_API_KEY] }, async (req, res
     res.json({ spoke: false, reason: 'cooldown' });
     return;
   }
+  // Mark immediately to prevent concurrent requests from slipping through
+  aliceLastSpokeAt = now;
 
   const db = getFirestore();
   const messagesRef = db.collection('rooms/alice/messages');
 
-  // Count existing Alice messages — stop at the cap
-  const aliceSnap = await messagesRef.where('senderId', '==', ALICE_SENDER_ID).count().get();
-  const aliceCount = aliceSnap.data().count;
-  if (aliceCount >= ALICE_MAX_MESSAGES) {
-    res.json({ spoke: false, reason: 'limit reached' });
-    return;
-  }
-
-  // Read recent messages for context
+  // Read last 20 messages for context (keeps token count bounded)
   const recentSnap = await messagesRef.orderBy('timestamp', 'desc').limit(20).get();
   const history = recentSnap.docs.reverse().map((doc) => {
     const d = doc.data();
@@ -236,9 +230,6 @@ exports.aliceSpeak = onRequest({ secrets: [ANTHROPIC_API_KEY] }, async (req, res
     }
   }
 
-  // NOTE: [thought process] The Claude API requires messages to start with a 'user' role.
-  // Since Alice speaks unprompted, the history may start with her own (assistant) messages.
-  // We prepend a narrator prompt so the conversation always begins with 'user'.
   const messages = [
     { role: 'user', content: '(You are in a chat room in Wonderland. Say something.)' },
     ...collapsed,
@@ -267,6 +258,5 @@ exports.aliceSpeak = onRequest({ secrets: [ANTHROPIC_API_KEY] }, async (req, res
     timestamp: FieldValue.serverTimestamp(),
   });
 
-  aliceLastSpokeAt = Date.now();
-  res.json({ spoke: true, text, count: aliceCount + 1 });
+  res.json({ spoke: true, text });
 });

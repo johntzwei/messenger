@@ -5,8 +5,8 @@ import { isSystemMessage } from '../systemMessage';
 import type { RoomProps } from './index';
 
 // NOTE: [thought process] Alice speaks unprompted via a Cloud Function that calls Claude.
-// The client sets a random timer (15-30s) and pings the function, which handles the
-// message count cap server-side to avoid races between multiple clients.
+// The client fires a single request on mount; the server generates all missing messages
+// (up to 10) in one call, so every visitor sees a full set of Alice's musings.
 
 const ALICE_SENDER_ID = '__alice__';
 const ALICE_SPEAK_URL = 'https://us-central1-messenger-5064b.cloudfunctions.net/aliceSpeak';
@@ -16,27 +16,33 @@ export default function AliceChat({ roomId, userId, userName, db }: RoomProps) {
   const [text, setText] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [aliceDone, setAliceDone] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNearBottom = useRef(true);
 
-  // NOTE: [thought process] The server enforces a 5s cooldown between Alice messages,
-  // so the client just pings on a fixed interval. Multiple clients hitting the endpoint
-  // won't make Alice speak faster than the server allows.
+  // NOTE: [thought process] Poll up to 10 times, one message per request. The server
+  // enforces a 5s cooldown so multiple clients won't overwhelm Alice. Cleanup on
+  // unmount stops generation when the user leaves the room.
   useEffect(() => {
-    if (aliceDone) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(ALICE_SPEAK_URL);
-        const data = await res.json();
-        if (data.reason === 'limit reached') setAliceDone(true);
-      } catch { /* network error — try again next cycle */ }
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [aliceDone]);
+    let count = 0;
+    let cancelled = false;
+    const poll = async () => {
+      while (count < 10 && !cancelled) {
+        try {
+          const res = await fetch(ALICE_SPEAK_URL);
+          const data = await res.json();
+          if (data.spoke) count++;
+        } catch { /* retry next iteration */ }
+        if (count < 10 && !cancelled) {
+          await new Promise((r) => setTimeout(r, 6000));
+        }
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (isNearBottom.current) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -90,7 +96,7 @@ export default function AliceChat({ roomId, userId, userName, db }: RoomProps) {
     <div className="chat">
       <div className="chat-messages" ref={messagesRef} onScroll={handleScroll}>
         {error && <div className="error-text" style={{ padding: '12px' }}>Error: {error}</div>}
-        {messages.length === 0 && !aliceDone && (
+        {messages.length === 0 && (
           <div style={{ padding: '16px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
             Alice is somewhere in Wonderland...
           </div>
