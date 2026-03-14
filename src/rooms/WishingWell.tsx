@@ -36,7 +36,7 @@ export default function WishingWell({ roomId, userId, userName, db }: RoomProps)
     const trimmed = text.trim();
     send(trimmed);
     setText("");
-    if (trimmed.toLowerCase() === "@wish" && !voters[userId]) {
+    if (trimmed.toLowerCase().startsWith("@wish") && !voters[userId]) {
       await setDoc(doc(db, "rooms", "wishingwell", "meta", "votes"), {
         voters: { [userId]: true },
       }, { merge: true });
