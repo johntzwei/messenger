@@ -1,4 +1,4 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onRequest } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
@@ -132,5 +132,48 @@ exports.sendNewMessageNotification = onDocumentCreated(
     await Promise.all(staleTokenIds.map((id) =>
       db.collection("fcmTokens").doc(id).delete(),
     ));
+  },
+);
+
+async function deleteCollection(db, path) {
+  const snap = await db.collection(path).get();
+  let batch = db.batch();
+  let count = 0;
+  for (const d of snap.docs) {
+    batch.delete(d.ref);
+    if (++count >= 500) { await batch.commit(); batch = db.batch(); count = 0; }
+  }
+  if (count > 0) await batch.commit();
+}
+
+function wellMessage(db, text) {
+  return db.collection("rooms/wishingwell/messages").add({
+    text, senderId: "well", senderName: "The Well", timestamp: FieldValue.serverTimestamp(),
+  });
+}
+
+// Wishing Well: when 3 users wish, clear all messages across all rooms
+exports.processWishingWell = onDocumentWritten(
+  "rooms/wishingwell/meta/votes",
+  async (event) => {
+    const voters = event.data?.after?.data()?.voters;
+    if (!voters) return;
+
+    const count = Object.keys(voters).length;
+    if (count < 1) return;
+
+    const db = getFirestore();
+
+    if (count < 3) {
+      const phrases = { 2: "The well stirs... two more souls must speak their truth.", 1: "The waters grow restless... one final wish awaits." };
+      await wellMessage(db, phrases[3 - count]);
+      return;
+    }
+
+    for (const room of ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell"]) {
+      await deleteCollection(db, `rooms/${room}/messages`);
+    }
+    await wellMessage(db, "Your collective determination fulfills the wish. The slate is wiped clean.");
+    await db.doc("rooms/wishingwell/meta/votes").set({ voters: {}, lastCleared: FieldValue.serverTimestamp() });
   },
 );

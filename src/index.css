@@ -284,3 +284,20 @@ body {
 .access-denied { padding: 24px; color: #f66; }
 .subtitle { color: #888; margin-bottom: 24px; }
 .error-text { color: #f66; margin-bottom: 24px; }
+
+.wishing-well-status {
+  text-align: center;
+  padding: 8px 12px;
+  color: #a8a0d0;
+  font-style: italic;
+  font-size: 13px;
+  border-bottom: 1px solid #333;
+}
+.well-message {
+  text-align: center;
+  color: #a8a0d0;
+  font-style: italic;
+  padding: 12px 24px;
+  margin: 8px 0;
+  font-size: 14px;
+}
