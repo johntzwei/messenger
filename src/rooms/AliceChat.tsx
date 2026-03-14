@@ -21,7 +21,6 @@ export default function AliceChat({ roomId, userId, userName, db }: RoomProps) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const aliceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNearBottom = useRef(true);
 
   // NOTE: [thought process] The server enforces a 5s cooldown between Alice messages,
