@@ -182,6 +182,39 @@ exports.processWishingWell = onDocumentWritten(
   },
 );
 
+// Universal Translator: translate a user's message using their custom prompt
+exports.translateMessage = onRequest(
+  { secrets: [ANTHROPIC_API_KEY], cors: true },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'POST only' });
+      return;
+    }
+
+    const { text, prompt } = req.body;
+    if (!text || !prompt) {
+      res.status(400).json({ error: 'Missing text or prompt' });
+      return;
+    }
+
+    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      system: `You are a universal translator. The user has given you these instructions for how to transform their messages:\n\n${prompt}\n\nTranslate/transform the given message according to those instructions. Output ONLY the transformed message, nothing else. Keep it roughly the same length as the original. Do not add quotes or explanations.`,
+      messages: [{ role: 'user', content: text }],
+    });
+
+    const translated = response.content[0]?.text;
+    if (!translated) {
+      res.status(500).json({ error: 'No text in response' });
+      return;
+    }
+
+    res.json({ translated });
+  }
+);
+
 // Alice in Wonderland: generates unprompted musings from Alice via Claude API
 const ALICE_SENDER_ID = '__alice__';
 const ALICE_SYSTEM_PROMPT = `You are Alice from Alice in Wonderland. You chose to stay in Wonderland forever because the real world felt too ordinary — why go back to lessons and tea times when there are talking flowers, mad hatters, and doors that lead to impossible places?
