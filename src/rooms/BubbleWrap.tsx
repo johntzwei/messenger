@@ -4,7 +4,7 @@ import type { Message } from "../useMessages";
 import { isSystemMessage } from "../systemMessage";
 import type { RoomProps } from "./index";
 
-// Parse "Name popped X" messages and group consecutive ones by the same person
+// === Collapse Logic ===
 interface CollapsedGroup {
   ids: string[];
   senderName: string;
@@ -25,13 +25,16 @@ function collapseMessages(messages: Message[]): DisplayItem[] {
     if (isSystemMessage(m.senderId)) {
       const match = POP_RE.exec(m.text);
       if (match) {
-        const [, popperName, key] = match;
+        const [, popperName, keysStr] = match;
+        // NOTE: [thought process] Batched messages send "Q, W, E" as a single message.
+        // Splitting on ", " handles both old single-key messages and new batched ones.
+        const keys = keysStr.split(', ');
         if (currentGroup && currentGroup.popperName === popperName) {
           currentGroup.ids.push(m.id);
-          currentGroup.keys.push(key);
+          currentGroup.keys.push(...keys);
         } else {
           if (currentGroup) items.push({ type: "group", group: currentGroup });
-          currentGroup = { ids: [m.id], senderName: m.senderName, senderId: m.senderId, popperName, keys: [key] };
+          currentGroup = { ids: [m.id], senderName: m.senderName, senderId: m.senderId, popperName, keys };
         }
         continue;
       }
@@ -44,19 +47,31 @@ function collapseMessages(messages: Message[]): DisplayItem[] {
   return items;
 }
 
-// Keyboard-style bubble layout
+// === Keyboard Layout ===
 const ROWS = [
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
   ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
   ["Z", "X", "C", "V", "B", "N", "M"],
 ];
 
+const BATCH_INTERVAL = 4000;
+
+// Display label for special keys
+function keyLabel(key: string) {
+  if (key === '⎵') return '';
+  if (key === '⏎') return '⏎';
+  return key;
+}
+
 export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) {
   const { messages, sendAsSystem, error } = useMessages(db, roomId, userId, userName);
   const [popped, setPopped] = useState<Set<string>>(new Set());
+  const [batch, setBatch] = useState<string[]>([]);
+  const [batchPulse, setBatchPulse] = useState(0);
+  const batchRef = useRef<string[]>([]);
+  const batchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
-  const messagesRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -66,15 +81,33 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
   // Clean up timers on unmount
   useEffect(() => () => {
     timers.current.forEach((t) => clearTimeout(t));
+    if (batchTimer.current) clearTimeout(batchTimer.current);
   }, []);
 
+  const flushBatch = useCallback(() => {
+    if (batchRef.current.length === 0) return;
+    const keys = batchRef.current;
+    sendAsSystem('Bubble Wrap', `${userName} popped ${keys.join(', ')}`, '__bubblewrap__');
+    batchRef.current = [];
+    setBatch([]);
+    batchTimer.current = null;
+  }, [userName, sendAsSystem]);
+
   const popBubble = useCallback((key: string) => {
-    if (popped.has(key)) return; // already popped
+    if (popped.has(key)) return;
 
     if (navigator.vibrate) navigator.vibrate(15);
 
     setPopped((prev) => new Set(prev).add(key));
-    sendAsSystem("Bubble Wrap", `${userName} popped ${key}`, "__bubblewrap__");
+
+    // Add to batch
+    batchRef.current.push(key);
+    setBatch([...batchRef.current]);
+    setBatchPulse((p) => p + 1);
+
+    // Start or reset the batch timer
+    if (batchTimer.current) clearTimeout(batchTimer.current);
+    batchTimer.current = setTimeout(flushBatch, BATCH_INTERVAL);
 
     // Reinflate after 1 second
     const timer = setTimeout(() => {
@@ -86,16 +119,16 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
       timers.current.delete(key);
     }, 1000);
     timers.current.set(key, timer);
-  }, [popped, userName, sendAsSystem]);
+  }, [popped, flushBatch]);
 
   const displayItems = useMemo(() => collapseMessages(messages), [messages]);
 
   return (
     <div className="chat bubblewrap-chat">
-      <div className="chat-messages" ref={messagesRef}>
-        {error && <div className="error-text" style={{ padding: "12px" }}>Error: {error}</div>}
+      <div className="chat-messages">
+        {error && <div className="error-text" style={{ padding: '12px' }}>Error: {error}</div>}
         {displayItems.map((item) => {
-          if (item.type === "group") {
+          if (item.type === 'group') {
             const g = item.group;
             return (
               <div key={g.ids[0]} className="chat-row">
@@ -104,7 +137,7 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
                   <span className="bw-popper">{g.popperName} popped</span>
                   <span className="bw-keys">
                     {g.keys.map((k, i) => (
-                      <span key={g.ids[i] ?? i} className="bw-key-bubble">{k}</span>
+                      <span key={g.ids[0] + '-' + i} className="bw-key-bubble">{keyLabel(k)}</span>
                     ))}
                   </span>
                 </div>
@@ -113,9 +146,9 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
           }
           const m = item.message;
           return (
-            <div key={m.id} className={`chat-row${isSystemMessage(m.senderId) ? "" : m.senderId === userId ? " mine" : ""}`}>
+            <div key={m.id} className={`chat-row${isSystemMessage(m.senderId) ? '' : m.senderId === userId ? ' mine' : ''}`}>
               <div className="chat-sender">{m.senderName}</div>
-              <div className={`chat-bubble${isSystemMessage(m.senderId) ? " system" : m.senderId === userId ? " mine" : ""}`}>
+              <div className={`chat-bubble${isSystemMessage(m.senderId) ? ' system' : m.senderId === userId ? ' mine' : ''}`}>
                 {m.text}
               </div>
             </div>
@@ -123,13 +156,26 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
         })}
         <div ref={bottomRef} />
       </div>
+
+      {/* Pending batch indicator */}
+      {batch.length > 0 && (
+        <div className="bw-batch-bar" key={batchPulse}>
+          <span className="bw-batch-label">popping:</span>
+          <span className="bw-batch-keys">
+            {batch.map((k, i) => (
+              <span key={i} className="bw-batch-key">{keyLabel(k)}</span>
+            ))}
+          </span>
+        </div>
+      )}
+
       <div className="bubblewrap-grid">
         {ROWS.map((row, ri) => (
-          <div key={ri} className="bubblewrap-row" style={{ paddingLeft: ri === 1 ? "5%" : ri === 2 ? "12%" : 0 }}>
+          <div key={ri} className="bubblewrap-row" style={{ paddingLeft: ri === 1 ? '5%' : ri === 2 ? '12%' : 0 }}>
             {row.map((key) => (
               <button
                 key={key}
-                className={`bubblewrap-bubble${popped.has(key) ? " popped" : ""}`}
+                className={`bubblewrap-bubble${popped.has(key) ? ' popped' : ''}`}
                 onPointerDown={() => popBubble(key)}
                 aria-label={`Pop bubble ${key}`}
               >
@@ -138,6 +184,22 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
             ))}
           </div>
         ))}
+        {/* Space and newline row */}
+        <div className="bubblewrap-row">
+          <button
+            className={`bubblewrap-bubble bw-newline${popped.has('⏎') ? ' popped' : ''}`}
+            onPointerDown={() => popBubble('⏎')}
+            aria-label="Pop bubble newline"
+          >
+            ⏎
+          </button>
+          <button
+            className={`bubblewrap-bubble bw-space${popped.has('⎵') ? ' popped' : ''}`}
+            onPointerDown={() => popBubble('⎵')}
+            aria-label="Pop bubble space"
+          >
+          </button>
+        </div>
       </div>
     </div>
   );
