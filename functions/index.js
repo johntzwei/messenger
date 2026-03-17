@@ -173,8 +173,9 @@ exports.processWishingWell = onDocumentWritten(
       return;
     }
 
-    for (const room of ["general", "admin", "vim", "mirror", "leaderboard", "wishingwell", "alice", "eliza++"]) {
-      await deleteCollection(db, `rooms/${room}/messages`);
+    const roomDocs = await db.collection("rooms").listDocuments();
+    for (const roomDoc of roomDocs) {
+      await deleteCollection(db, `rooms/${roomDoc.id}/messages`);
     }
     await wellMessage(db, "Your collective determination fulfills the wish. The slate is wiped clean.");
     await db.doc("rooms/wishingwell/meta/votes").set({ voters: {}, lastCleared: FieldValue.serverTimestamp() });

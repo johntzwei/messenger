@@ -1,38 +1,139 @@
 # Johnny's Messenger
 
-A minimal, mobile-first chat app built with React, Firebase, and GitHub Pages. Supports push notifications as a PWA.
+Minimal mobile-first chat app with hackable chatrooms. React + Firebase + GitHub Pages.
 
-## Features
+## Adding a Chatroom
 
-- Google sign-in via Firebase Auth
-- Real-time chat via Firestore
-- Admin console for managing an allowlist of permitted users
-- PWA — installable on mobile home screens
-- Push notifications via Firebase Cloud Messaging (FCM)
-- Dark theme, mobile-optimized UI
+Every chatroom is a single React component in `src/rooms/`. Adding one takes two steps.
 
-## Project Structure
+### Step 1: Create `src/rooms/YourRoom.tsx`
 
+Your component receives `RoomProps` and can do whatever it wants with the UI. Here's the minimal version:
+
+```tsx
+import { useState } from 'react';
+import { useMessages } from '../useMessages';
+import MessageList from './MessageList';
+import type { RoomProps } from './index';
+
+export default function YourRoom({ roomId, userId, userName, db }: RoomProps) {
+  const { messages, send, error } = useMessages(db, roomId, userId, userName);
+  const [text, setText] = useState('');
+
+  const handleSend = () => {
+    if (!text.trim()) return;
+    send(text);
+    setText('');
+  };
+
+  return (
+    <div className="chat">
+      <MessageList messages={messages} error={error} userId={userId} />
+      <div className="chat-input-row">
+        <input
+          className="chat-input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          placeholder="Type a message..."
+        />
+        <button className="chat-send" onClick={handleSend}>Send</button>
+      </div>
+    </div>
+  );
+}
 ```
-src/
-  main.tsx            — App entry point, auth flow, routing
-  firebase.ts         — Firebase config and exports
-  Home.tsx            — Room list screen
-  index.css           — All styles
-  useAllowlist.ts     — Hook: real-time allowlist from Firestore
-  useMessages.ts      — Hook: real-time chat messages from Firestore
-  useNotifications.ts — Hook: FCM permission, token storage, foreground notifications
-  rooms/
-    index.ts          — Room registry and RoomProps interface
-    GeneralChat.tsx   — Chat room component
-    AdminConsole.tsx  — Admin-only allowlist management (commands: @list, @add, @remove)
-functions/
-  index.js            — Cloud Function: sends push notification on new message
-  package.json
-public/
-  manifest.json              — PWA manifest
-  firebase-messaging-sw.js   — Service worker for background push notifications
+
+### Step 2: Register in `src/rooms/index.ts`
+
+Import your component and add an entry to the `rooms` object:
+
+```ts
+import YourRoom from './YourRoom';
+
+const rooms: Record<string, { name: string; component: ComponentType<RoomProps> }> = {
+  // ...existing rooms...
+  yourroom: { name: 'Your Room', component: YourRoom },
+};
 ```
+
+That's it. The home screen and routing pick it up automatically.
+
+### Firestore Rules
+
+New rooms generally don't need rule changes. The existing rules in `firestore.rules` already allow any authenticated user to read/write:
+
+- `rooms/{roomId}/messages/{messageId}` — chat messages (all rooms share this wildcard)
+- `rooms/{roomId}/meta/{docId}` — per-room metadata (e.g. WishingWell uses this for vote state)
+
+If your room stores data in a **new top-level collection** (not under `rooms/`), you'll need to add a rule for it in `firestore.rules` and deploy with:
+
+```sh
+npx firebase-tools deploy --only firestore:rules --project messenger-5064b
+```
+
+### Step 3 (optional): Add CSS
+
+All styles live in `src/index.css`. Scope room-specific styles with a class on the root div (e.g. `<div className="chat yourroom-chat">` and `.yourroom-chat .your-element { ... }`).
+
+## Available Building Blocks
+
+### `useMessages(db, roomId, userId, userName)`
+
+The core hook (`src/useMessages.ts`). Returns:
+
+- `messages` — array of `{ id, text, senderId, senderName, timestamp }`, last 50, real-time
+- `send(text)` — send a message as the current user
+- `sendAsSystem(name, text, id?)` — send a message as a system/bot sender (uses `__name__` convention for sender ID)
+- `error` — error string or null
+
+### `MessageList`
+
+Drop-in component (`src/rooms/MessageList.tsx`) for standard chat display with auto-scroll. Takes `{ messages, error, userId }`. Use this for standard chat UI; skip it if you're building something custom (like Bubble Wrap does).
+
+### `isSystemMessage(senderId)`
+
+Helper (`src/systemMessage.ts`). Returns true if the sender ID follows the `__name__` convention (e.g. `__eliza__`). Use this to style bot/system messages differently.
+
+### `RoomProps`
+
+```ts
+interface RoomProps {
+  roomId: string;   // the key from the rooms registry
+  userId: string;   // Firebase Auth UID
+  userName: string;  // display name
+  userEmail: string; // email address
+  db: Firestore;    // Firestore instance
+}
+```
+
+## Examples to Copy From
+
+- **Standard chat**: `src/rooms/GeneralChat.tsx` — full-featured with scroll-to-bottom, long-press copy, swipe gestures
+- **Minimal twist on chat**: `src/rooms/MirrorChat.tsx` — same as General but mirrors text with CSS transform
+- **Custom (non-chat) UI**: `src/rooms/BubbleWrap.tsx` — keyboard-layout bubble popping, batched system messages, custom rendering
+- **Bot/NPC chat**: `src/rooms/ElizaChat.tsx` — responds to user messages with automated replies via `sendAsSystem`
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/rooms/index.ts` | Room registry — add new rooms here |
+| `src/rooms/MessageList.tsx` | Reusable message list component |
+| `src/useMessages.ts` | Real-time chat messages hook (Firestore) |
+| `src/systemMessage.ts` | `isSystemMessage()` helper |
+| `src/main.tsx` | App shell, auth, routing |
+| `src/index.css` | All styles |
+| `src/firebase.ts` | Firebase config |
+| `functions/index.js` | Cloud Functions: push notifications + admin API |
+| `firestore.rules` | Firestore security rules |
+
+## Stack
+
+- **Frontend**: React 19, TypeScript, Vite, deployed to GitHub Pages at `/messenger/`
+- **Backend**: Firebase (Firestore, Auth, Cloud Messaging)
+- **Cloud Functions**: `functions/index.js` (Node.js 20) — push notifications + admin API
+- **Firestore rules**: `firestore.rules`
 
 ## Setup from Scratch
 
@@ -44,133 +145,99 @@ public/
 
 ### 1. Create a Firebase Project
 
-1. Go to [Firebase Console](https://console.firebase.google.com/) and create a new project
-2. **Enable Authentication**: go to Authentication → Sign-in method → enable **Google**
-3. **Create Firestore**: go to Firestore Database → Create database → start in **test mode** (you'll lock it down with rules later)
-4. **Register a Web App**: go to Project Settings (gear icon) → General → "Add app" → Web → copy the config object
+1. Go to the Firebase Console and create a new project
+2. **Enable Authentication**: go to Authentication > Sign-in method > enable **Google**
+3. **Create Firestore**: go to Firestore Database > Create database > start in **test mode** (you'll lock it down with rules later)
+4. **Register a Web App**: go to Project Settings (gear icon) > General > "Add app" > Web > copy the config object
 
 ### 2. Add Your Firebase Config
 
-Replace the config in `src/firebase.ts`:
-
-```ts
-const firebaseConfig = {
-  apiKey: "...",
-  authDomain: "...",
-  projectId: "...",
-  storageBucket: "...",
-  messagingSenderId: "...",
-  appId: "...",
-};
-```
-
-Also update the same config in `public/firebase-messaging-sw.js` (the service worker can't import from the app bundle).
+Replace the config in `src/firebase.ts` and also in `public/firebase-messaging-sw.js` (the service worker can't import from the app bundle).
 
 ### 3. Generate a VAPID Key (for Push Notifications)
 
-1. In Firebase Console → Project Settings → **Cloud Messaging** tab
+1. In Firebase Console > Project Settings > **Cloud Messaging** tab
 2. Under **Web Push certificates**, click **Generate key pair**
 3. Copy the key and replace `REPLACE_WITH_YOUR_VAPID_KEY` in `src/useNotifications.ts`
 
-### 4. Set Firestore Security Rules
+### 4. Deploy Firestore Security Rules
 
-In Firebase Console → Firestore → Rules, paste:
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Allowlist — readable by Cloud Functions, writable by admin
-    match /allowedUsers/{email} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-    }
-
-    // Chat rooms and messages
-    match /rooms/{roomId}/messages/{messageId} {
-      allow read, write: if request.auth != null;
-    }
-
-    // FCM tokens — each user can only write their own
-    match /fcmTokens/{userId} {
-      allow read: if false;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
+```sh
+npx firebase-tools deploy --only firestore:rules --project <your-project-id>
 ```
 
-### 5. Deploy the Cloud Function (Push Notifications)
+### 5. Deploy Cloud Functions (Push Notifications)
 
 Push notifications require the **Blaze (pay-as-you-go)** plan. The free tier is generous — a small chat app will cost $0.
 
 ```sh
-firebase login
-firebase init functions
-# Select your project
-# When asked to overwrite functions/index.js, say NO
-
-cd functions
-npm install
-cd ..
-
-firebase deploy --only functions
+cd functions && npm install && cd ..
+npx firebase-tools deploy --only functions --project <your-project-id>
 ```
 
-### 6. Add PWA Icons
-
-Place two PNG icons in the `public/` folder:
-- `icon-192.png` (192x192)
-- `icon-512.png` (512x512)
-
-These are used when users add the app to their home screen.
-
-### 7. Configure GitHub Pages Deployment
-
-Update `vite.config.ts` if your repo name differs:
-
-```ts
-export default defineConfig({
-  plugins: [react()],
-  base: '/your-repo-name/',
-})
-```
-
-Also update the manifest link in `index.html` and the service worker path in `src/useNotifications.ts` to match your base path.
-
-### 8. Run Locally
+### 6. Run Locally
 
 ```sh
 npm install
 npm run dev
 ```
 
-### 9. Deploy to GitHub Pages
+### 7. Deploy to GitHub Pages
+
+Update `vite.config.ts` if your repo name differs, then:
 
 ```sh
 npm run build
-# Push the dist/ folder to gh-pages branch, or configure GitHub Actions
+# Push to main — GitHub Actions auto-deploys
+```
+
+## Deploying
+
+```sh
+# Frontend (auto-deploys via GitHub Actions on push to main)
+npm run build
+
+# Cloud Functions
+npx firebase-tools deploy --only functions --project messenger-5064b
+
+# Firestore rules
+npx firebase-tools deploy --only firestore:rules --project messenger-5064b
+```
+
+## Debugging
+
+### Common Issues
+
+- **Blank screen on iOS**: `Notification` API doesn't exist on iOS Safari outside PWA. Guard all access with `typeof Notification !== 'undefined'`.
+- **Duplicate notifications**: `serverTimestamp()` can cause Firestore to fire document-created events twice. The cloud function deduplicates using an in-memory Set.
+- **Permission denied on Firestore writes**: Check that the collection has a matching rule in `firestore.rules`. Deploy with `npx firebase-tools deploy --only firestore:rules`.
+- **Messages stop loading/sending**: Likely hit Firestore free tier quota (50K reads/day). Check by querying the admin API — if Firestore responds, the quota isn't the issue.
+
+### Admin API
+
+Query Firestore directly (bypasses security rules):
+
+```sh
+# Get the admin key
+npx firebase-tools functions:secrets:access ADMIN_KEY --project messenger-5064b
+
+# Status overview
+curl -s "https://us-central1-messenger-5064b.cloudfunctions.net/adminQuery?key=<KEY>" | python3 -m json.tool
+
+# Query a collection
+curl -s "https://us-central1-messenger-5064b.cloudfunctions.net/adminQuery?key=<KEY>&collection=rooms/general/messages&limit=5&orderBy=timestamp&order=desc" | python3 -m json.tool
+```
+
+### Cloud Function Logs
+
+```sh
+npx firebase-tools functions:log --project messenger-5064b 2>&1 | tail -20
 ```
 
 ## Admin Console
 
-The admin console is accessible from the room list but restricted to the admin email defined in `src/rooms/AdminConsole.tsx`. Change this to your own email:
-
-```ts
-const ADMIN_EMAIL = "you@gmail.com";
-```
-
-Commands:
-- `@list` — show all allowed users
-- `@add user@gmail.com` — add a user to the allowlist
-- `@remove user@gmail.com` — remove a user
-
-When the allowlist is empty, all authenticated users can sign in.
+Accessible from the room list, restricted to the admin email in `src/rooms/AdminConsole.tsx`. Commands: `@list`, `@add user@gmail.com`, `@remove user@gmail.com`. When the allowlist is empty, all authenticated users can sign in.
 
 ## Push Notifications on iOS
 
-iOS supports push notifications for PWAs starting with iOS 16.4+, but the user **must** add the app to their home screen first — push won't work from the Safari browser tab.
-
-## Allowlist
-
-The allowlist is stored in Firestore (collection `allowedUsers`, where each document ID is an email). Manage it through the Admin Console room in the app. If the collection is empty or inaccessible, all authenticated users are allowed in.
+iOS supports push for PWAs starting with iOS 16.4+, but the user **must** add the app to their home screen first — push won't work from the Safari browser tab.
