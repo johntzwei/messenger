@@ -1,7 +1,48 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useMessages } from "../useMessages";
+import type { Message } from "../useMessages";
 import { isSystemMessage } from "../systemMessage";
 import type { RoomProps } from "./index";
+
+// Parse "Name popped X" messages and group consecutive ones by the same person
+interface CollapsedGroup {
+  ids: string[];
+  senderName: string;
+  senderId: string;
+  popperName: string;
+  keys: string[];
+}
+
+type DisplayItem = { type: "message"; message: Message } | { type: "group"; group: CollapsedGroup };
+
+const POP_RE = /^(.+) popped (.+)$/;
+
+function collapseMessages(messages: Message[]): DisplayItem[] {
+  const items: DisplayItem[] = [];
+  let currentGroup: CollapsedGroup | null = null;
+
+  for (const m of messages) {
+    if (isSystemMessage(m.senderId)) {
+      const match = POP_RE.exec(m.text);
+      if (match) {
+        const [, popperName, key] = match;
+        if (currentGroup && currentGroup.popperName === popperName) {
+          currentGroup.ids.push(m.id);
+          currentGroup.keys.push(key);
+        } else {
+          if (currentGroup) items.push({ type: "group", group: currentGroup });
+          currentGroup = { ids: [m.id], senderName: m.senderName, senderId: m.senderId, popperName, keys: [key] };
+        }
+        continue;
+      }
+    }
+    // Non-pop message breaks the group
+    if (currentGroup) { items.push({ type: "group", group: currentGroup }); currentGroup = null; }
+    items.push({ type: "message", message: m });
+  }
+  if (currentGroup) items.push({ type: "group", group: currentGroup });
+  return items;
+}
 
 // Keyboard-style bubble layout
 const ROWS = [
@@ -47,18 +88,39 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
     timers.current.set(key, timer);
   }, [popped, userName, sendAsSystem]);
 
+  const displayItems = useMemo(() => collapseMessages(messages), [messages]);
+
   return (
     <div className="chat bubblewrap-chat">
       <div className="chat-messages" ref={messagesRef}>
         {error && <div className="error-text" style={{ padding: "12px" }}>Error: {error}</div>}
-        {messages.map((m) => (
-          <div key={m.id} className={`chat-row${isSystemMessage(m.senderId) ? "" : m.senderId === userId ? " mine" : ""}`}>
-            <div className="chat-sender">{m.senderName}</div>
-            <div className={`chat-bubble${isSystemMessage(m.senderId) ? " system" : m.senderId === userId ? " mine" : ""}`}>
-              {m.text}
+        {displayItems.map((item) => {
+          if (item.type === "group") {
+            const g = item.group;
+            return (
+              <div key={g.ids[0]} className="chat-row">
+                <div className="chat-sender">{g.senderName}</div>
+                <div className="chat-bubble system bw-collapsed">
+                  <span className="bw-popper">{g.popperName} popped</span>
+                  <span className="bw-keys">
+                    {g.keys.map((k, i) => (
+                      <span key={g.ids[i] ?? i} className="bw-key-bubble">{k}</span>
+                    ))}
+                  </span>
+                </div>
+              </div>
+            );
+          }
+          const m = item.message;
+          return (
+            <div key={m.id} className={`chat-row${isSystemMessage(m.senderId) ? "" : m.senderId === userId ? " mine" : ""}`}>
+              <div className="chat-sender">{m.senderName}</div>
+              <div className={`chat-bubble${isSystemMessage(m.senderId) ? " system" : m.senderId === userId ? " mine" : ""}`}>
+                {m.text}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
       <div className="bubblewrap-grid">
