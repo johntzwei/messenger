@@ -3,16 +3,18 @@ import { useMessages } from '../useMessages';
 import { useSwipeGesture } from '../useSwipeGesture';
 import type { RoomProps } from './index';
 
-// NOTE: [thought process] The translate endpoint keeps the Anthropic API key server-side.
-// Each user sets a prompt on entry that defines how their messages get transformed.
-// The prompt lives in local state so it resets every time you join the room.
+// NOTE: [thought process] Users set their translation prompt by sending a message starting
+// with @translate. That message is visible to everyone in chat, and from then on all the
+// user's subsequent messages get transformed through Claude before posting. Sending a new
+// @translate message changes the prompt. The prompt resets when you leave the room since
+// it's just local state.
 const TRANSLATE_URL = 'https://us-central1-messenger-5064b.cloudfunctions.net/translateMessage';
+const TRANSLATE_PREFIX = '@translate ';
 
 export default function TranslatorChat({ roomId, userId, userName, db }: RoomProps) {
   const { messages, send, error } = useMessages(db, roomId, userId, userName);
   const [text, setText] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [promptDraft, setPromptDraft] = useState('');
   const [translating, setTranslating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -50,8 +52,21 @@ export default function TranslatorChat({ roomId, userId, userName, db }: RoomPro
     if (navigator.vibrate) navigator.vibrate(10);
     setText('');
 
-    // NOTE: [thought process] Translate before sending so the message that appears in chat
-    // is the transformed version. If translation fails, fall back to the original text.
+    // NOTE: [thought process] @translate messages set the prompt and are sent as-is so
+    // everyone can see what translation style each person picked. Regular messages get
+    // translated if the user has a prompt set, otherwise sent raw.
+    if (original.toLowerCase().startsWith(TRANSLATE_PREFIX)) {
+      const newPrompt = original.slice(TRANSLATE_PREFIX.length).trim();
+      if (newPrompt) setPrompt(newPrompt);
+      send(original);
+      return;
+    }
+
+    if (!prompt) {
+      send(original);
+      return;
+    }
+
     setTranslating(true);
     try {
       const res = await fetch(TRANSLATE_URL, {
@@ -87,65 +102,46 @@ export default function TranslatorChat({ roomId, userId, userName, db }: RoomPro
     }
   };
 
-  // === Prompt Setup Screen ===
-  if (!prompt) {
-    return (
-      <div className="chat" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', gap: '16px' }}>
-        <div style={{ fontSize: '24px' }}>🌐</div>
-        <div style={{ textAlign: 'center', color: '#ccc', fontSize: '14px', maxWidth: '300px' }}>
-          Set your translation prompt. All your messages will be transformed through it.
-        </div>
-        <input
-          className="chat-input"
-          type="text"
-          autoComplete="off"
-          value={promptDraft}
-          onChange={(e) => setPromptDraft(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && promptDraft.trim() && setPrompt(promptDraft.trim())}
-          placeholder='e.g. "translate as if I was a sloppy spaghetti"'
-          style={{ width: '100%', maxWidth: '320px' }}
-        />
-        <button
-          className="chat-send"
-          onClick={() => promptDraft.trim() && setPrompt(promptDraft.trim())}
-          style={{ padding: '8px 24px' }}
-        >
-          Set Prompt
-        </button>
-      </div>
-    );
-  }
+  // NOTE: [thought process] Highlight @translate messages with a distinct color so they
+  // stand out as prompt-setting commands rather than regular conversation.
+  const isTranslateMsg = (msgText: string) =>
+    msgText.toLowerCase().startsWith(TRANSLATE_PREFIX);
 
-  // === Chat Screen ===
   return (
     <div className="chat">
-      <div style={{ padding: '6px 12px', fontSize: '11px', color: '#888', background: '#1a1a1a', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-          Prompt: {prompt}
-        </span>
-        <button
-          onClick={() => { setPrompt(''); setPromptDraft(''); }}
-          style={{ background: 'none', border: 'none', color: '#888', fontSize: '11px', cursor: 'pointer', marginLeft: '8px', whiteSpace: 'nowrap' }}
-        >
-          change
-        </button>
-      </div>
+      {prompt && (
+        <div style={{ padding: '6px 12px', fontSize: '11px', color: '#888', background: '#1a1a1a', borderBottom: '1px solid #333' }}>
+          Your prompt: {prompt}
+        </div>
+      )}
       <div className="chat-messages" ref={messagesRef} onScroll={handleScroll}>
         {error && <div className="error-text" style={{ padding: '12px' }}>Error: {error}</div>}
-        {messages.map((m) => (
-          <div key={m.id} className={`chat-row${m.senderId === userId ? ' mine' : ''}`}>
-            <div className="chat-sender">{m.senderName}</div>
-            <div
-              className={`chat-bubble${m.senderId === userId ? ' mine' : ''}${copiedId === m.id ? ' copied' : ''}`}
-              onTouchStart={() => onBubbleTouchStart(m.text, m.id)}
-              onTouchEnd={onBubbleTouchEnd}
-              onTouchCancel={onBubbleTouchEnd}
-            >
-              {m.text}
-              {copiedId === m.id && <span className="copied-toast">Copied!</span>}
-            </div>
+        {messages.length === 0 && (
+          <div style={{ padding: '16px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
+            Send @translate followed by your prompt to set your translation style.
           </div>
-        ))}
+        )}
+        {messages.map((m) => {
+          const isMine = m.senderId === userId;
+          const isPromptMsg = isTranslateMsg(m.text);
+          return (
+            <div key={m.id} className={`chat-row${isMine ? ' mine' : ''}`}>
+              <div className="chat-sender" style={isPromptMsg ? { color: '#9b59b6' } : undefined}>
+                {m.senderName}
+              </div>
+              <div
+                className={`chat-bubble${isMine ? ' mine' : ''}${copiedId === m.id ? ' copied' : ''}`}
+                style={isPromptMsg ? { fontStyle: 'italic', opacity: 0.8 } : undefined}
+                onTouchStart={() => onBubbleTouchStart(m.text, m.id)}
+                onTouchEnd={onBubbleTouchEnd}
+                onTouchCancel={onBubbleTouchEnd}
+              >
+                {m.text}
+                {copiedId === m.id && <span className="copied-toast">Copied!</span>}
+              </div>
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
       {showScrollBtn && (
@@ -163,7 +159,7 @@ export default function TranslatorChat({ roomId, userId, userName, db }: RoomPro
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={translating ? 'Translating...' : 'Type a message...'}
+          placeholder={translating ? 'Translating...' : prompt ? 'Type a message...' : '@translate your prompt here...'}
           disabled={translating}
         />
         <button className="chat-send" onClick={handleSend} disabled={translating}>
