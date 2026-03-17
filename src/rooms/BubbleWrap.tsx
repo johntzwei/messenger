@@ -15,7 +15,12 @@ interface CollapsedGroup {
 
 type DisplayItem = { type: "message"; message: Message } | { type: "group"; group: CollapsedGroup };
 
+// Matches both "Name popped Q" and batched "Name popped Q, W, E"
 const POP_RE = /^(.+) popped (.+)$/;
+
+function parseKeys(raw: string): string[] {
+  return raw.split(", ");
+}
 
 function collapseMessages(messages: Message[]): DisplayItem[] {
   const items: DisplayItem[] = [];
@@ -25,13 +30,14 @@ function collapseMessages(messages: Message[]): DisplayItem[] {
     if (isSystemMessage(m.senderId)) {
       const match = POP_RE.exec(m.text);
       if (match) {
-        const [, popperName, key] = match;
+        const [, popperName, keysRaw] = match;
+        const keys = parseKeys(keysRaw);
         if (currentGroup && currentGroup.popperName === popperName) {
           currentGroup.ids.push(m.id);
-          currentGroup.keys.push(key);
+          currentGroup.keys.push(...keys);
         } else {
           if (currentGroup) items.push({ type: "group", group: currentGroup });
-          currentGroup = { ids: [m.id], senderName: m.senderName, senderId: m.senderId, popperName, keys: [key] };
+          currentGroup = { ids: [m.id], senderName: m.senderName, senderId: m.senderId, popperName, keys };
         }
         continue;
       }
@@ -68,13 +74,34 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
     timers.current.forEach((t) => clearTimeout(t));
   }, []);
 
+  // Batch pops: collect keys over 500ms, send one message
+  const pendingKeys = useRef<string[]>([]);
+  const batchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushBatch = useCallback(() => {
+    if (pendingKeys.current.length === 0) return;
+    const keys = [...pendingKeys.current];
+    pendingKeys.current = [];
+    batchTimer.current = null;
+    sendAsSystem("Bubble Wrap", `${userName} popped ${keys.join(", ")}`, "__bubblewrap__");
+  }, [userName, sendAsSystem]);
+
+  // Clean up batch timer on unmount
+  useEffect(() => () => {
+    if (batchTimer.current) clearTimeout(batchTimer.current);
+  }, []);
+
   const popBubble = useCallback((key: string) => {
     if (popped.has(key)) return; // already popped
 
     if (navigator.vibrate) navigator.vibrate(15);
 
     setPopped((prev) => new Set(prev).add(key));
-    sendAsSystem("Bubble Wrap", `${userName} popped ${key}`, "__bubblewrap__");
+
+    // Add to batch instead of sending immediately
+    pendingKeys.current.push(key);
+    if (batchTimer.current) clearTimeout(batchTimer.current);
+    batchTimer.current = setTimeout(flushBatch, 500);
 
     // Reinflate after 1 second
     const timer = setTimeout(() => {
@@ -86,7 +113,7 @@ export default function BubbleWrap({ roomId, userId, userName, db }: RoomProps) 
       timers.current.delete(key);
     }, 1000);
     timers.current.set(key, timer);
-  }, [popped, userName, sendAsSystem]);
+  }, [popped, flushBatch]);
 
   const displayItems = useMemo(() => collapseMessages(messages), [messages]);
 

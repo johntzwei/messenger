@@ -349,19 +349,18 @@ body {
 
 /* Collapsed pop messages */
 .bw-collapsed {
-  display: inline-flex !important;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: inline-block !important;
+  max-width: 95%;
 }
-.bw-popper { margin-right: 2px; }
-.bw-keys { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.bw-popper { display: block; margin-bottom: 4px; }
+.bw-keys { display: flex; flex-wrap: wrap; gap: 4px; }
 .bw-key-bubble {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
+  min-width: 26px;
   height: 26px;
+  padding: 0 2px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #5cf, #28a);
   color: #fff;
