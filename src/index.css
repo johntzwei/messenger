@@ -445,7 +445,7 @@ body {
   font-size: 14px;
   transition: background 0.5s;
 }
-.pomo-timer-bar.stopped { background: #1a1a1a; color: #888; }
+.pomo-timer-bar.idle { background: #1a1a1a; color: #888; }
 .pomo-timer-bar.focus { background: #1a2a1a; color: #6d6; }
 .pomo-timer-bar.break { background: #2a2a1a; color: #da6; }
 .pomo-phase { font-weight: bold; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; }

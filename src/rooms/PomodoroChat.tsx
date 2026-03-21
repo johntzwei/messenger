@@ -5,12 +5,14 @@ import { useSwipeGesture } from "../useSwipeGesture";
 import type { RoomProps } from "./index";
 
 interface TimerState {
-  startTime: number;       // epoch ms when timer was started
+  mode: "focus" | "break" | "idle";  // current mode
+  startTime: number;       // epoch ms when this phase started
   focusMinutes: number;
   breakMinutes: number;
   paused: boolean;
-  pausedElapsed: number;   // elapsed ms when paused
-  startedBy: string;       // who started/last acted
+  pausedRemaining: number; // ms remaining when paused
+  cycle: number;           // current cycle number
+  startedBy: string;       // who last acted
 }
 
 const DEFAULT_FOCUS = 25;
@@ -22,33 +24,24 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function getPhase(timer: TimerState | null, now: number): { phase: "focus" | "break" | "stopped"; remaining: number; cycle: number } {
-  if (!timer || timer.paused) {
-    if (timer?.pausedElapsed != null && timer.pausedElapsed > 0) {
-      const cycleMs = (timer.focusMinutes + timer.breakMinutes) * 60 * 1000;
-      const pos = timer.pausedElapsed % cycleMs;
-      const focusMs = timer.focusMinutes * 60 * 1000;
-      const cycle = Math.floor(timer.pausedElapsed / cycleMs) + 1;
-      if (pos < focusMs) {
-        return { phase: "focus", remaining: Math.ceil((focusMs - pos) / 1000), cycle };
-      } else {
-        return { phase: "break", remaining: Math.ceil((cycleMs - pos) / 1000), cycle };
-      }
-    }
-    return { phase: "stopped", remaining: 0, cycle: 0 };
+function getStatus(timer: TimerState | null, now: number): { phase: "focus" | "break" | "idle" | "done"; remaining: number; cycle: number } {
+  if (!timer || timer.mode === "idle") {
+    return { phase: "idle", remaining: 0, cycle: timer?.cycle ?? 0 };
   }
 
+  if (timer.paused) {
+    return { phase: timer.mode, remaining: Math.max(0, Math.ceil(timer.pausedRemaining / 1000)), cycle: timer.cycle };
+  }
+
+  const durationMs = (timer.mode === "focus" ? timer.focusMinutes : timer.breakMinutes) * 60 * 1000;
   const elapsed = now - timer.startTime;
-  const cycleMs = (timer.focusMinutes + timer.breakMinutes) * 60 * 1000;
-  const pos = elapsed % cycleMs;
-  const focusMs = timer.focusMinutes * 60 * 1000;
-  const cycle = Math.floor(elapsed / cycleMs) + 1;
+  const remainingMs = durationMs - elapsed;
 
-  if (pos < focusMs) {
-    return { phase: "focus", remaining: Math.ceil((focusMs - pos) / 1000), cycle };
-  } else {
-    return { phase: "break", remaining: Math.ceil((cycleMs - pos) / 1000), cycle };
+  if (remainingMs <= 0) {
+    return { phase: "done", remaining: 0, cycle: timer.cycle };
   }
+
+  return { phase: timer.mode, remaining: Math.ceil(remainingMs / 1000), cycle: timer.cycle };
 }
 
 export default function PomodoroChat({ roomId, userId, userName, db }: RoomProps) {
@@ -63,24 +56,39 @@ export default function PomodoroChat({ roomId, userId, userName, db }: RoomProps
   const isNearBottom = useRef(true);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevPhaseRef = useRef<string | null>(null);
+  const hasAnnouncedDone = useRef(false);
 
   const timerDoc = doc(db, "rooms", roomId, "meta", "timer");
 
   // Listen to timer state
   useEffect(() => {
     return onSnapshot(timerDoc, (snap) => {
-      setTimer(snap.exists() ? (snap.data() as TimerState) : null);
+      const data = snap.exists() ? (snap.data() as TimerState) : null;
+      setTimer(data);
+      hasAnnouncedDone.current = false; // reset on any remote change
     });
   }, [db, roomId]);
 
   // Tick every second when timer is running
   useEffect(() => {
-    if (timer && !timer.paused) {
+    if (timer && !timer.paused && timer.mode !== "idle") {
       const interval = setInterval(() => setNow(Date.now()), 1000);
       return () => clearInterval(interval);
     }
-  }, [timer?.paused, timer?.startTime]);
+  }, [timer?.paused, timer?.startTime, timer?.mode]);
+
+  // Auto-stop when phase completes
+  useEffect(() => {
+    if (!timer || timer.paused || timer.mode === "idle") return;
+    const { phase } = getStatus(timer, now);
+    if (phase === "done" && !hasAnnouncedDone.current) {
+      hasAnnouncedDone.current = true;
+      const finishedMode = timer.mode;
+      const nextMode = finishedMode === "focus" ? "break" : "focus";
+      setDoc(timerDoc, { ...timer, mode: "idle" });
+      sendAsSystem("Timer", `${finishedMode === "focus" ? "Focus" : "Break"} time is up! Type @timer ${nextMode} to start ${nextMode}.`);
+    }
+  }, [now, timer]);
 
   // Auto-scroll
   useEffect(() => {
@@ -111,40 +119,57 @@ export default function PomodoroChat({ roomId, userId, userName, db }: RoomProps
   const updateTimer = (state: Partial<TimerState>) =>
     setDoc(timerDoc, state, { merge: true });
 
+  const startPhase = async (mode: "focus" | "break") => {
+    const focusMin = timer?.focusMinutes ?? DEFAULT_FOCUS;
+    const breakMin = timer?.breakMinutes ?? DEFAULT_BREAK;
+    const cycle = mode === "focus" ? (timer?.cycle ?? 0) + 1 : (timer?.cycle ?? 1);
+    await setDoc(timerDoc, {
+      mode,
+      startTime: Date.now(),
+      focusMinutes: focusMin,
+      breakMinutes: breakMin,
+      paused: false,
+      pausedRemaining: 0,
+      cycle,
+      startedBy: userName,
+    });
+    const label = mode === "focus" ? "focus" : "break";
+    const mins = mode === "focus" ? focusMin : breakMin;
+    sendAsSystem("Timer", `${userName} started ${label} (${mins}min) · cycle #${cycle}`);
+  };
+
   const handleTimerCommand = async (args: string) => {
     const cmd = args.trim().toLowerCase();
 
-    if (cmd === "start" || cmd === "") {
-      if (timer?.paused && timer.pausedElapsed > 0) {
+    if (cmd === "start" || cmd === "focus" || cmd === "") {
+      if (timer?.paused && timer.mode !== "idle" && timer.pausedRemaining > 0) {
         // Resume from paused position
-        const resumeStart = Date.now() - timer.pausedElapsed;
-        await updateTimer({ startTime: resumeStart, paused: false, pausedElapsed: 0, startedBy: userName });
+        const durationMs = (timer.mode === "focus" ? timer.focusMinutes : timer.breakMinutes) * 60 * 1000;
+        const resumeStart = Date.now() - (durationMs - timer.pausedRemaining);
+        await updateTimer({ startTime: resumeStart, paused: false, pausedRemaining: 0, startedBy: userName });
         sendAsSystem("Timer", `${userName} resumed the timer`);
       } else {
-        // Fresh start
-        await updateTimer({
-          startTime: Date.now(),
-          focusMinutes: timer?.focusMinutes ?? DEFAULT_FOCUS,
-          breakMinutes: timer?.breakMinutes ?? DEFAULT_BREAK,
-          paused: false,
-          pausedElapsed: 0,
-          startedBy: userName,
-        });
-        sendAsSystem("Timer", `${userName} started the timer (${timer?.focusMinutes ?? DEFAULT_FOCUS}/${timer?.breakMinutes ?? DEFAULT_BREAK})`);
+        await startPhase("focus");
       }
+    } else if (cmd === "break") {
+      await startPhase("break");
     } else if (cmd === "pause" || cmd === "stop") {
-      if (timer && !timer.paused) {
+      if (timer && !timer.paused && timer.mode !== "idle") {
+        const durationMs = (timer.mode === "focus" ? timer.focusMinutes : timer.breakMinutes) * 60 * 1000;
         const elapsed = Date.now() - timer.startTime;
-        await updateTimer({ paused: true, pausedElapsed: elapsed });
+        const remaining = Math.max(0, durationMs - elapsed);
+        await updateTimer({ paused: true, pausedRemaining: remaining });
         sendAsSystem("Timer", `${userName} paused the timer`);
       }
     } else if (cmd === "reset") {
       await setDoc(timerDoc, {
+        mode: "idle",
         startTime: 0,
         focusMinutes: timer?.focusMinutes ?? DEFAULT_FOCUS,
         breakMinutes: timer?.breakMinutes ?? DEFAULT_BREAK,
-        paused: true,
-        pausedElapsed: 0,
+        paused: false,
+        pausedRemaining: 0,
+        cycle: 0,
         startedBy: userName,
       });
       sendAsSystem("Timer", `${userName} reset the timer`);
@@ -159,15 +184,15 @@ export default function PomodoroChat({ roomId, userId, userName, db }: RoomProps
         sendAsSystem("Timer", `Usage: @timer set 25/5`);
       }
     } else if (cmd === "status") {
-      const { phase, remaining, cycle } = getPhase(timer, Date.now());
-      if (phase === "stopped") {
-        sendAsSystem("Timer", `Timer is stopped. Type @timer start to begin.`);
+      const { phase, remaining, cycle } = getStatus(timer, Date.now());
+      if (phase === "idle") {
+        sendAsSystem("Timer", `Timer is idle. Type @timer start to begin a focus session.`);
       } else {
         const pauseNote = timer?.paused ? " (paused)" : "";
         sendAsSystem("Timer", `Cycle ${cycle} · ${phase} · ${formatTime(remaining)} left${pauseNote}`);
       }
     } else if (cmd === "help") {
-      sendAsSystem("Timer", `Commands:\n@timer start — start or resume\n@timer pause — pause\n@timer reset — reset to 0\n@timer set 25/5 — set focus/break\n@timer status — show status`);
+      sendAsSystem("Timer", `Commands:\n@timer start — start focus (or resume)\n@timer break — start break\n@timer pause — pause\n@timer reset — reset to idle\n@timer set 25/5 — set focus/break mins\n@timer status — show status`);
     } else {
       sendAsSystem("Timer", `Unknown command. Type @timer help for usage.`);
     }
@@ -207,14 +232,13 @@ export default function PomodoroChat({ roomId, userId, userName, db }: RoomProps
     }
   };
 
-  const { phase, remaining, cycle } = getPhase(timer, now);
-  const isRunning = timer != null && !timer.paused;
+  const { phase, remaining, cycle } = getStatus(timer, now);
 
   return (
     <div className="chat pomodoro-chat">
-      <div className={`pomo-timer-bar ${phase}`}>
-        {phase === "stopped" ? (
-          <span className="pomo-status">Timer stopped · type <b>@timer start</b></span>
+      <div className={`pomo-timer-bar ${phase === "idle" || phase === "done" ? "idle" : phase}`}>
+        {phase === "idle" || phase === "done" ? (
+          <span className="pomo-status">Timer idle · type <b>@timer start</b></span>
         ) : (
           <>
             <span className="pomo-phase">{phase === "focus" ? "Focus" : "Break"}</span>
