@@ -62,10 +62,8 @@ export default function TranslatorChat({ roomId, userId, userName, db }: RoomPro
       return;
     }
 
-    if (!prompt) {
-      send(original);
-      return;
-    }
+    // No prompt set — block regular messages
+    if (!prompt) return;
 
     setTranslating(true);
     try {
@@ -118,7 +116,7 @@ export default function TranslatorChat({ roomId, userId, userName, db }: RoomPro
         {error && <div className="error-text" style={{ padding: '12px' }}>Error: {error}</div>}
         {messages.length === 0 && (
           <div style={{ padding: '16px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
-            Send @translate followed by your prompt to set your translation style.
+            Send <b style={{ color: '#9b59b6' }}>@translate my words to ___</b> to set your style.
           </div>
         )}
         {messages.map((m) => {
@@ -159,7 +157,7 @@ export default function TranslatorChat({ roomId, userId, userName, db }: RoomPro
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={translating ? 'Translating...' : prompt ? 'Type a message...' : '@translate your prompt here...'}
+          placeholder={translating ? 'Translating...' : prompt ? 'Type a message...' : '@translate my words to...'}
           disabled={translating}
         />
         <button className="chat-send" onClick={handleSend} disabled={translating}>

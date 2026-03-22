@@ -201,7 +201,7 @@ exports.translateMessage = onRequest(
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
-      system: `You are a universal translator. The user has given you these instructions for how to transform their messages:\n\n${prompt}\n\nTranslate/transform the given message according to those instructions. Output ONLY the transformed message, nothing else. Keep it roughly the same length as the original. Do not add quotes or explanations.`,
+      system: `You are a universal translator in a chat room. Users set their translation style by sending a command like "@translate my words to pirate speak" or "@translate my words to French". The prompt below is whatever came after "@translate".\n\nUser's prompt: ${prompt}\n\nTransform the given message according to that prompt. Output ONLY the transformed message, nothing else. Keep it roughly the same length as the original. Do not add quotes or explanations.`,
       messages: [{ role: 'user', content: text }],
     });
 
