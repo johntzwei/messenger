@@ -11,6 +11,7 @@ import AliceChat from "./AliceChat";
 import ElizaPlusChat from "./ElizaPlusChat";
 import BubbleWrap from "./BubbleWrap";
 import TranslatorChat from "./TranslatorChat";
+import PomodoroChat from "./PomodoroChat";
 
 export interface RoomProps {
   roomId: string;
@@ -32,6 +33,7 @@ const rooms: Record<string, { name: string; component: ComponentType<RoomProps> 
   'eliza++': { name: "ELIZA++", component: ElizaPlusChat },
   bubblewrap: { name: "Bubble Wrap", component: BubbleWrap },
   translator: { name: "Universal Translator", component: TranslatorChat },
+  pomodoro: { name: "Pomodoro Timer", component: PomodoroChat },
 };
 
 export default rooms;
